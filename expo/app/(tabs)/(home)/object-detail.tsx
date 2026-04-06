@@ -14,6 +14,8 @@ import { ThemeColors } from '@/constants/colors';
 import { useObjects } from '@/providers/ObjectsProvider';
 import { useInventory } from '@/providers/InventoryProvider';
 import { useChecklists } from '@/providers/ChecklistsProvider';
+import { useComments } from '@/providers/CommentsProvider';
+import { ChevronRight } from 'lucide-react-native';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { ZoomableImage } from '@/components/ZoomableImage';
@@ -109,7 +111,14 @@ function DocumentCard({ doc, onDelete, onRename, onView, colors }: { doc: any; o
   );
 }
 
-function WorkEntryCard({ entry, onEdit, onDelete, onEditDate, onPhotoPress, onComments, colors }: { entry: any; onEdit: () => void; onDelete: () => void; onEditDate: () => void; onPhotoPress: (uri: string) => void; onComments: () => void; colors: ThemeColors }) {
+function getShortPreview(text: string, wordCount: number = 3): string {
+  if (!text) return '';
+  const words = text.trim().split(/\s+/);
+  const preview = words.slice(0, wordCount).join(' ');
+  return words.length > wordCount ? preview + '...' : preview;
+}
+
+function WorkEntryCard({ entry, onEdit, onDelete, onEditDate, onPhotoPress, onComments, lastComment, commentCount, colors }: { entry: any; onEdit: () => void; onDelete: () => void; onEditDate: () => void; onPhotoPress: (uri: string) => void; onComments: () => void; lastComment?: string; commentCount: number; colors: ThemeColors }) {
   const usedMaterials: UsedMaterial[] = entry.usedMaterials || [];
   return (
     <Card style={{ marginBottom: 12 }}>
@@ -119,9 +128,6 @@ function WorkEntryCard({ entry, onEdit, onDelete, onEditDate, onPhotoPress, onCo
           <Calendar size={11} color={colors.textMuted} />
         </TouchableOpacity>
         <View style={{ flexDirection: 'row' as const, gap: 4 }}>
-          <TouchableOpacity onPress={onComments} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: colors.surface, alignItems: 'center' as const, justifyContent: 'center' as const }}>
-            <MessageCircle size={14} color={colors.info} />
-          </TouchableOpacity>
           <TouchableOpacity onPress={onEdit} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: colors.surface, alignItems: 'center' as const, justifyContent: 'center' as const }}>
             <Pencil size={14} color={colors.primary} />
           </TouchableOpacity>
@@ -154,6 +160,22 @@ function WorkEntryCard({ entry, onEdit, onDelete, onEditDate, onPhotoPress, onCo
           ))}
         </ScrollView>
       )}
+      <TouchableOpacity onPress={onComments} activeOpacity={0.7} style={{ flexDirection: 'row' as const, alignItems: 'center' as const, marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: colors.border, gap: 8, marginHorizontal: -16, paddingHorizontal: 16 }}>
+        <View style={{ position: 'relative' as const }}>
+          <MessageCircle size={15} color={colors.info} />
+          {commentCount > 0 && (
+            <View style={{ position: 'absolute' as const, top: -5, right: -8, backgroundColor: colors.primary, borderRadius: 7, minWidth: 14, height: 14, alignItems: 'center' as const, justifyContent: 'center' as const, paddingHorizontal: 3 }}>
+              <Text style={{ color: '#fff', fontSize: 9, fontWeight: '700' as const }}>{commentCount}</Text>
+            </View>
+          )}
+        </View>
+        {lastComment ? (
+          <Text style={{ fontSize: 12, color: colors.textSecondary, flex: 1 }} numberOfLines={1}>{getShortPreview(lastComment)}</Text>
+        ) : (
+          <Text style={{ fontSize: 12, color: colors.textMuted, fontStyle: 'italic' as const }}>Комментарии</Text>
+        )}
+        <ChevronRight size={14} color={colors.textMuted} />
+      </TouchableOpacity>
     </Card>
   );
 }
@@ -229,6 +251,24 @@ export default function ObjectDetailScreen() {
   const checklistResults = getResultsByObject(id as string);
   
   const [activeTab, setActiveTab] = useState<'contacts' | 'docs' | 'history' | 'checklists'>('history');
+  const { comments: commentsRaw, loadComments } = useComments();
+
+  React.useEffect(() => {
+    workEntries.forEach(e => { loadComments('work_entry', e.id); });
+  }, [workEntries, loadComments]);
+
+  const entryCommentsMap = useMemo(() => {
+    const map: Record<string, { count: number; lastText: string }> = {};
+    for (const key of Object.keys(commentsRaw)) {
+      if (key.startsWith('work_entry:')) {
+        const arr = commentsRaw[key];
+        if (arr && arr.length > 0) {
+          map[key] = { count: arr.length, lastText: arr[arr.length - 1].text };
+        }
+      }
+    }
+    return map;
+  }, [commentsRaw]);
   const [fileViewerVisible, setFileViewerVisible] = useState(false);
   const [viewingFileUri, setViewingFileUri] = useState<string | null>(null);
   const [viewingFileName, setViewingFileName] = useState('');
@@ -749,6 +789,8 @@ export default function ObjectDetailScreen() {
                     onDelete={() => handleDeleteWorkEntry(entry.id)}
                     onEditDate={() => handleEditEntryDate(entry.id, entry.createdAt)}
                     onComments={() => { setCommentsEntryId(entry.id); setCommentsModalVisible(true); }}
+                    lastComment={entryCommentsMap[`work_entry:${entry.id}`]?.lastText}
+                    commentCount={entryCommentsMap[`work_entry:${entry.id}`]?.count || 0}
                     colors={colors}
                     onPhotoPress={async (uri) => {
                       try {
