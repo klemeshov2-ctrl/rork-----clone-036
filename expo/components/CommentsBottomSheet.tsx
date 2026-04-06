@@ -8,7 +8,6 @@ import {
   FlatList,
   ActivityIndicator,
   Modal,
-  KeyboardAvoidingView,
   Platform,
   Animated,
   Dimensions,
@@ -148,6 +147,7 @@ export function CommentsBottomSheet({ visible, onClose, entityType, entityId, ti
   const [inputText, setInputText] = useState('');
   const listRef = useRef<FlatList>(null);
   const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
+  const keyboardOffset = useRef(new Animated.Value(0)).current;
 
   const key = `${entityType}:${String(entityId)}`;
   const comments = commentsMap[key] || [];
@@ -169,8 +169,42 @@ export function CommentsBottomSheet({ visible, onClose, entityType, entityId, ti
       }).start();
     } else {
       slideAnim.setValue(SCREEN_HEIGHT);
+      keyboardOffset.setValue(0);
     }
-  }, [visible, slideAnim]);
+  }, [visible, slideAnim, keyboardOffset]);
+
+  useEffect(() => {
+    if (!visible) return;
+
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const onShow = Keyboard.addListener(showEvent, (e) => {
+      const kbHeight = e.endCoordinates.height;
+      const offset = kbHeight - insets.bottom;
+      Animated.timing(keyboardOffset, {
+        toValue: -Math.max(offset, 0),
+        duration: Platform.OS === 'ios' ? e.duration || 250 : 200,
+        useNativeDriver: true,
+      }).start();
+      setTimeout(() => {
+        listRef.current?.scrollToEnd({ animated: true });
+      }, 150);
+    });
+
+    const onHide = Keyboard.addListener(hideEvent, () => {
+      Animated.timing(keyboardOffset, {
+        toValue: 0,
+        duration: Platform.OS === 'ios' ? 250 : 200,
+        useNativeDriver: true,
+      }).start();
+    });
+
+    return () => {
+      onShow.remove();
+      onHide.remove();
+    };
+  }, [visible, keyboardOffset, insets.bottom]);
 
   const handleClose = useCallback(() => {
     Keyboard.dismiss();
@@ -211,11 +245,7 @@ export function CommentsBottomSheet({ visible, onClose, entityType, entityId, ti
       onRequestClose={handleClose}
       statusBarTranslucent
     >
-      <KeyboardAvoidingView
-        style={styles.backdrop}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 10 : 0}
-      >
+      <View style={styles.backdrop}>
         <TouchableOpacity
           style={styles.backdropTouch}
           activeOpacity={1}
@@ -224,7 +254,7 @@ export function CommentsBottomSheet({ visible, onClose, entityType, entityId, ti
           <Animated.View
             style={[
               styles.sheet,
-              { transform: [{ translateY: slideAnim }] },
+              { transform: [{ translateY: slideAnim }, { translateY: keyboardOffset }] },
             ]}
           >
             <View style={styles.handleBar} />
@@ -315,7 +345,7 @@ export function CommentsBottomSheet({ visible, onClose, entityType, entityId, ti
               </View>
             )}
           </Animated.View>
-      </KeyboardAvoidingView>
+      </View>
     </Modal>
   );
 }
