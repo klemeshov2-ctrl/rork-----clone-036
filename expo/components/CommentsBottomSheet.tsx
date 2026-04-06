@@ -14,6 +14,7 @@ import {
   Dimensions,
   Keyboard,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MessageCircle, Send, X } from 'lucide-react-native';
 import { useThemeColors } from '@/providers/ThemeProvider';
 import { ThemeColors } from '@/constants/colors';
@@ -131,7 +132,8 @@ function CommentBubble({ comment, colors, isOwn }: { comment: Comment; colors: T
 
 export function CommentsBottomSheet({ visible, onClose, entityType, entityId, title }: CommentsBottomSheetProps) {
   const colors = useThemeColors();
-  const styles = useMemo(() => createStyles(colors), [colors]);
+  const insets = useSafeAreaInsets();
+  const styles = useMemo(() => createStyles(colors, insets.bottom), [colors, insets.bottom]);
   const {
     comments: commentsMap,
     loadComments,
@@ -209,17 +211,16 @@ export function CommentsBottomSheet({ visible, onClose, entityType, entityId, ti
       onRequestClose={handleClose}
       statusBarTranslucent
     >
-      <View style={styles.backdrop}>
+      <KeyboardAvoidingView
+        style={styles.backdrop}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 10 : 0}
+      >
         <TouchableOpacity
           style={styles.backdropTouch}
           activeOpacity={1}
           onPress={handleClose}
         />
-        <KeyboardAvoidingView
-          style={styles.keyboardAvoid}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 10 : 0}
-        >
           <Animated.View
             style={[
               styles.sheet,
@@ -314,13 +315,12 @@ export function CommentsBottomSheet({ visible, onClose, entityType, entityId, ti
               </View>
             )}
           </Animated.View>
-        </KeyboardAvoidingView>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
 
-function createStyles(colors: ThemeColors) {
+function createStyles(colors: ThemeColors, bottomInset: number) {
   return StyleSheet.create({
     backdrop: {
       flex: 1,
@@ -329,10 +329,7 @@ function createStyles(colors: ThemeColors) {
     backdropTouch: {
       flex: 1,
     },
-    keyboardAvoid: {
-      justifyContent: 'flex-end',
-      flex: 1,
-    },
+
     sheet: {
       backgroundColor: colors.background,
       borderTopLeftRadius: 24,
@@ -442,7 +439,7 @@ function createStyles(colors: ThemeColors) {
       borderTopColor: colors.border,
       paddingHorizontal: 12,
       paddingVertical: 8,
-      paddingBottom: 8,
+      paddingBottom: Math.max(bottomInset + 8, 16),
       backgroundColor: colors.background,
     },
     inputRow: {
