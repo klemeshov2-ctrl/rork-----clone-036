@@ -181,7 +181,8 @@ export function CommentsBottomSheet({ visible, onClose, entityType, entityId, ti
 
     const onShow = Keyboard.addListener(showEvent, (e) => {
       const kbHeight = e.endCoordinates.height;
-      const offset = kbHeight - insets.bottom;
+      const extraPadding = Platform.OS === 'android' ? 48 : 0;
+      const offset = kbHeight - insets.bottom + extraPadding;
       Animated.timing(keyboardOffset, {
         toValue: -Math.max(offset, 0),
         duration: Platform.OS === 'ios' ? e.duration || 250 : 200,
