@@ -9,7 +9,7 @@ import {
   Platform,
 } from 'react-native';
 import { Stack } from 'expo-router';
-import { Trash2, Copy, AlertTriangle, AlertCircle } from 'lucide-react-native';
+import { Trash2, Copy, AlertCircle, ShieldAlert } from 'lucide-react-native';
 import { useThemeColors } from '@/providers/ThemeProvider';
 import { ThemeColors } from '@/constants/colors';
 import { getLogs, clearLogs, getLogsAsText, subscribe, LogEntry } from '@/lib/logger';
@@ -26,9 +26,6 @@ function formatTimestamp(ts: number): string {
 
 function LogEntryCard({ entry, colors }: { entry: LogEntry; colors: ThemeColors }) {
   const [expanded, setExpanded] = useState(false);
-  const isError = entry.level === 'error';
-  const levelColor = isError ? colors.error : colors.warning;
-  const levelBg = isError ? colors.error + '15' : colors.warning + '15';
 
   return (
     <TouchableOpacity
@@ -38,16 +35,16 @@ function LogEntryCard({ entry, colors }: { entry: LogEntry; colors: ThemeColors 
         padding: 12,
         marginBottom: 8,
         borderWidth: 1,
-        borderColor: levelColor + '30',
+        borderColor: colors.error + '30',
         borderLeftWidth: 3,
-        borderLeftColor: levelColor,
+        borderLeftColor: colors.error,
       }}
       onPress={() => setExpanded(!expanded)}
       activeOpacity={0.7}
     >
       <View style={{ flexDirection: 'row' as const, alignItems: 'center' as const, marginBottom: 6 }}>
         <View style={{
-          backgroundColor: levelBg,
+          backgroundColor: colors.error + '15',
           borderRadius: 6,
           paddingHorizontal: 8,
           paddingVertical: 2,
@@ -56,13 +53,9 @@ function LogEntryCard({ entry, colors }: { entry: LogEntry; colors: ThemeColors 
           gap: 4,
           marginRight: 8,
         }}>
-          {isError ? (
-            <AlertCircle size={12} color={levelColor} />
-          ) : (
-            <AlertTriangle size={12} color={levelColor} />
-          )}
-          <Text style={{ fontSize: 10, fontWeight: '700' as const, color: levelColor, textTransform: 'uppercase' as const }}>
-            {entry.level}
+          <AlertCircle size={12} color={colors.error} />
+          <Text style={{ fontSize: 10, fontWeight: '700' as const, color: colors.error, textTransform: 'uppercase' as const }}>
+            ошибка
           </Text>
         </View>
         <Text style={{ fontSize: 11, color: colors.textMuted, fontVariant: ['tabular-nums' as const] }}>
@@ -75,8 +68,21 @@ function LogEntryCard({ entry, colors }: { entry: LogEntry; colors: ThemeColors 
       >
         {entry.message}
       </Text>
+      {expanded && entry.originalMessage && entry.originalMessage !== entry.message && (
+        <View style={{ marginTop: 8, backgroundColor: colors.surface, borderRadius: 8, padding: 8 }}>
+          <Text style={{ fontSize: 10, color: colors.textMuted, marginBottom: 4, fontWeight: '600' as const }}>
+            Оригинал:
+          </Text>
+          <Text style={{ fontSize: 11, color: colors.textMuted, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' }}>
+            {entry.originalMessage}
+          </Text>
+        </View>
+      )}
       {entry.stack && expanded && (
         <View style={{ marginTop: 8, backgroundColor: colors.surface, borderRadius: 8, padding: 8 }}>
+          <Text style={{ fontSize: 10, color: colors.textMuted, marginBottom: 4, fontWeight: '600' as const }}>
+            Стек вызовов:
+          </Text>
           <Text style={{ fontSize: 11, color: colors.textMuted, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' }}>
             {entry.stack}
           </Text>
@@ -99,7 +105,7 @@ export default function LogsScreen() {
   }, []);
 
   const handleClear = useCallback(() => {
-    Alert.alert('Очистить логи', 'Удалить все записи журнала?', [
+    Alert.alert('Очистить журнал', 'Удалить все записи об ошибках?', [
       { text: 'Отмена', style: 'cancel' },
       {
         text: 'Удалить',
@@ -125,7 +131,7 @@ export default function LogsScreen() {
       } else {
         await navigator.clipboard.writeText(text);
       }
-      Alert.alert('Скопировано', 'Логи скопированы в буфер обмена');
+      Alert.alert('Скопировано', 'Журнал ошибок скопирован в буфер обмена');
     } catch {
       Alert.alert('Ошибка', 'Не удалось скопировать');
     }
@@ -137,9 +143,6 @@ export default function LogsScreen() {
 
   const keyExtractor = useCallback((item: LogEntry) => item.id, []);
 
-  const errorCount = useMemo(() => logs.filter(l => l.level === 'error').length, [logs]);
-  const warnCount = useMemo(() => logs.filter(l => l.level === 'warn').length, [logs]);
-
   return (
     <View style={styles.container}>
       <Stack.Screen options={{ title: 'Журнал ошибок' }} />
@@ -147,13 +150,8 @@ export default function LogsScreen() {
       <View style={styles.statsRow}>
         <View style={[styles.statCard, { borderColor: colors.error + '30' }]}>
           <AlertCircle size={16} color={colors.error} />
-          <Text style={[styles.statNumber, { color: colors.error }]}>{errorCount}</Text>
+          <Text style={[styles.statNumber, { color: colors.error }]}>{logs.length}</Text>
           <Text style={styles.statLabel}>ошибок</Text>
-        </View>
-        <View style={[styles.statCard, { borderColor: colors.warning + '30' }]}>
-          <AlertTriangle size={16} color={colors.warning} />
-          <Text style={[styles.statNumber, { color: colors.warning }]}>{warnCount}</Text>
-          <Text style={styles.statLabel}>предупр.</Text>
         </View>
       </View>
 
@@ -170,9 +168,9 @@ export default function LogsScreen() {
 
       {logs.length === 0 ? (
         <View style={styles.emptyContainer}>
-          <AlertTriangle size={40} color={colors.textMuted} />
-          <Text style={styles.emptyTitle}>Нет записей</Text>
-          <Text style={styles.emptySubtext}>Ошибки и предупреждения будут отображаться здесь</Text>
+          <ShieldAlert size={40} color={colors.textMuted} />
+          <Text style={styles.emptyTitle}>Ошибок нет</Text>
+          <Text style={styles.emptySubtext}>Критические ошибки будут отображаться здесь на русском языке</Text>
         </View>
       ) : (
         <FlatList
