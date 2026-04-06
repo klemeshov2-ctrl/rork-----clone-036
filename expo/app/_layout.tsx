@@ -1,0 +1,184 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { Stack } from "expo-router";
+import * as SplashScreen from "expo-splash-screen";
+import React, { useEffect, useRef } from "react";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { ThemeProvider, useThemeColors } from "@/providers/ThemeProvider";
+import { ProfileProvider } from "@/providers/ProfileProvider";
+import { DatabaseProvider } from "@/providers/DatabaseProvider";
+import { AuthProvider, useAuth } from "@/providers/AuthProvider";
+import { ObjectsProvider } from "@/providers/ObjectsProvider";
+import { ChecklistsProvider } from "@/providers/ChecklistsProvider";
+import { InventoryProvider } from "@/providers/InventoryProvider";
+import { TasksProvider } from "@/providers/TasksProvider";
+import { KnowledgeProvider } from "@/providers/KnowledgeProvider";
+import { RemindersProvider } from "@/providers/RemindersProvider";
+import { BackupProvider } from "@/providers/BackupProvider";
+import { CommentsProvider } from "@/providers/CommentsProvider";
+import { SyncPanelProvider } from "@/providers/SyncPanelProvider";
+import { PinAuth } from "@/components/PinAuth";
+import { initLogger } from "@/lib/logger";
+import { db } from "@/config/firebase";
+import { requestNotificationPermissions } from "@/lib/notifications";
+import { ActivityIndicator, Platform, View, Image, Text, StyleSheet } from "react-native";
+import * as Notifications from 'expo-notifications';
+import { useRouter } from 'expo-router';
+
+void SplashScreen.preventAutoHideAsync();
+
+const queryClient = new QueryClient();
+
+function useNotificationResponseHandler() {
+  const router = useRouter();
+  const responseListener = useRef<Notifications.Subscription | null>(null);
+
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+
+    responseListener.current = Notifications.addNotificationResponseReceivedListener((response) => {
+      const data = response.notification.request.content.data as Record<string, string> | undefined;
+      console.log('[Notifications] Response received, data:', data);
+      if (!data) return;
+
+      const { commentId, entityType, entityId } = data;
+      if (commentId && entityType && entityId) {
+        if (entityType === 'work_entry') {
+          router.push({
+            pathname: '/(home)/object-detail' as any,
+            params: { highlightComment: entityId },
+          });
+        } else if (entityType === 'inventory') {
+          router.navigate('/(tabs)/inventory' as any);
+        } else if (entityType === 'task') {
+          router.push({
+            pathname: '/reminders/create' as any,
+            params: { editId: entityId },
+          });
+        } else {
+          router.navigate('/(tabs)/notifications' as any);
+        }
+      }
+    });
+
+    return () => {
+      if (responseListener.current) {
+        responseListener.current.remove();
+      }
+    };
+  }, [router]);
+}
+
+function RootLayoutNav() {
+  const colors = useThemeColors();
+  useNotificationResponseHandler();
+  return (
+    <Stack
+      screenOptions={{
+        headerBackTitle: "Назад",
+        headerStyle: { backgroundColor: colors.background },
+        headerTintColor: colors.text,
+      }}
+    >
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen name="backup" options={{ title: "Синхронизация" }} />
+      <Stack.Screen name="excel" options={{ title: "Экспорт / Импорт" }} />
+      <Stack.Screen name="sync-master" options={{ title: "Режим мастера" }} />
+      <Stack.Screen name="sync-subscriber" options={{ title: "Подписка" }} />
+      <Stack.Screen name="reminders/create" options={{ title: "Новая задача", headerShown: false }} />
+      <Stack.Screen name="object/new-entry" options={{ title: "Новая запись" }} />
+      <Stack.Screen name="object/add-contact" options={{ title: "Контакт" }} />
+      <Stack.Screen name="modal" options={{ presentation: "modal" }} />
+    </Stack>
+  );
+}
+
+function AuthGate() {
+  const { isAuthenticated, hasPin, pinEnabled, isLoading } = useAuth();
+  const colors = useThemeColors();
+
+  if (isLoading) {
+    return (
+      <View style={[loadingStyles.container, { backgroundColor: colors.background }]}>
+        <Image
+          source={{ uri: 'https://pub-e001eb4506b145aa938b5d3badbff6a5.r2.dev/attachments/g1yojq340zz71w6pqf3ev' }}
+          style={loadingStyles.icon}
+        />
+        <Text style={[loadingStyles.title, { color: colors.text }]}>Журнал мастера</Text>
+        <ActivityIndicator size="small" color={colors.primary} style={{ marginTop: 24 }} />
+      </View>
+    );
+  }
+
+  if (hasPin && pinEnabled && !isAuthenticated) {
+    return <PinAuth />;
+  }
+
+  if (!hasPin) {
+    return <PinAuth />;
+  }
+
+  return <RootLayoutNav />;
+}
+
+const loadingStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  icon: {
+    width: 140,
+    height: 140,
+    borderRadius: 35,
+    marginBottom: 20,
+  },
+  title: {
+    fontSize: 26,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
+});
+
+export default function RootLayout() {
+  useEffect(() => {
+    void initLogger();
+    console.log('[Firebase] DB ready:', !!db);
+    void requestNotificationPermissions();
+    void SplashScreen.hideAsync();
+  }, []);
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <ThemeProvider>
+          <AuthProvider>
+            <ProfileProvider>
+              <DatabaseProvider>
+                <ObjectsProvider>
+                  <ChecklistsProvider>
+                    <InventoryProvider>
+                      <TasksProvider>
+                        <KnowledgeProvider>
+                          <RemindersProvider>
+                            <BackupProvider>
+                              <CommentsProvider>
+                                <SyncPanelProvider>
+                                  <AuthGate />
+                                </SyncPanelProvider>
+                              </CommentsProvider>
+                            </BackupProvider>
+                          </RemindersProvider>
+                        </KnowledgeProvider>
+                      </TasksProvider>
+                    </InventoryProvider>
+                  </ChecklistsProvider>
+                </ObjectsProvider>
+              </DatabaseProvider>
+            </ProfileProvider>
+          </AuthProvider>
+        </ThemeProvider>
+      </GestureHandlerRootView>
+    </QueryClientProvider>
+  );
+}
