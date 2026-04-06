@@ -22,7 +22,7 @@ import { ensureFileLocal, isRemoteUrl, saveFileToUnifiedDir } from '@/lib/fileMa
 import { useBackup } from '@/providers/BackupProvider';
 import { formatDateTime, getInitials, getMimeType, isImageFile, isPdfFile, isWordFile, isExcelFile, DOCUMENT_PICKER_TYPES } from '@/lib/utils';
 import { UsedMaterial, ChecklistResult } from '@/types';
-import { CommentsSection } from '@/components/CommentsSection';
+import { CommentsBottomSheet } from '@/components/CommentsBottomSheet';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
@@ -250,7 +250,7 @@ export default function ObjectDetailScreen() {
   const [editEntryDateValue, setEditEntryDateValue] = useState('');
   const [editEntryTimeValue, setEditEntryTimeValue] = useState('');
 
-  const [commentsEntryId, setCommentsEntryId] = useState<string | null>(null);
+  const [commentsEntryId, setCommentsEntryId] = useState<string>('');
   const [commentsModalVisible, setCommentsModalVisible] = useState(false);
 
   if (!object) {
@@ -967,35 +967,13 @@ export default function ObjectDetailScreen() {
         </KeyboardAvoidingView>
       </Modal>
 
-      <Modal
+      <CommentsBottomSheet
         visible={commentsModalVisible}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setCommentsModalVisible(false)}
-      >
-        <KeyboardAvoidingView
-          style={styles.commentsOverlay}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 10 : 0}
-        >
-          <TouchableOpacity
-            style={styles.commentsOverlayDismiss}
-            activeOpacity={1}
-            onPress={() => setCommentsModalVisible(false)}
-          />
-          <View style={styles.commentsModalContent}>
-            <View style={{ flexDirection: 'row' as const, justifyContent: 'space-between' as const, alignItems: 'center' as const, marginBottom: 8 }}>
-              <Text style={styles.renameTitle}>Комментарии к записи</Text>
-              <TouchableOpacity onPress={() => setCommentsModalVisible(false)} style={{ padding: 4 }}>
-                <X size={22} color={colors.textMuted} />
-              </TouchableOpacity>
-            </View>
-            {commentsEntryId && (
-              <CommentsSection entityType="work_entry" entityId={commentsEntryId} />
-            )}
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+        onClose={() => setCommentsModalVisible(false)}
+        entityType="work_entry"
+        entityId={commentsEntryId}
+        title="Комментарии к записи"
+      />
     </View>
   );
 }
@@ -1479,20 +1457,6 @@ function createStyles(colors: ThemeColors) {
     paddingVertical: 10,
     borderRadius: 8,
   },
-  commentsOverlay: {
-    flex: 1,
-    backgroundColor: colors.overlay,
-  },
-  commentsOverlayDismiss: {
-    flex: 1,
-  },
-  commentsModalContent: {
-    backgroundColor: colors.surfaceElevated,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
-    maxHeight: '70%',
-    minHeight: 300,
-  },
+
 });
 }
