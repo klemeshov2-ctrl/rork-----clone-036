@@ -377,9 +377,9 @@ function createStyles(colors: ThemeColors, bottomInset: number) {
       backgroundColor: colors.background,
       borderTopLeftRadius: 24,
       borderTopRightRadius: 24,
-      maxHeight: SCREEN_HEIGHT * 0.88,
-      minHeight: 400,
-      height: SCREEN_HEIGHT * 0.85,
+      maxHeight: SCREEN_HEIGHT * 0.55,
+      minHeight: 250,
+      height: SCREEN_HEIGHT * 0.50,
       overflow: 'hidden',
     },
     handleBar: {
