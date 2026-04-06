@@ -1492,6 +1492,7 @@ function createStyles(colors: ThemeColors) {
     borderTopRightRadius: 20,
     padding: 20,
     maxHeight: '70%',
+    minHeight: 300,
   },
 });
 }

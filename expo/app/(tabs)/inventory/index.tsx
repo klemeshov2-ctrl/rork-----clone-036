@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, Modal, TextInput } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, Modal, TextInput, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Plus, Package, AlertTriangle, Trash2, Minus, Plus as PlusIcon, ChevronDown, ChevronRight, FolderPlus, Pencil, Tag, Search, ChevronsUpDown } from 'lucide-react-native';
 import { useThemeColors } from '@/providers/ThemeProvider';
@@ -388,75 +388,77 @@ export default function InventoryScreen() {
       </Modal>
 
       <Modal visible={showEditModal} animationType="slide" transparent onRequestClose={() => { setShowEditModal(false); setEditingItem(null); }}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={{ flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const, marginBottom: 16 }}>
-              <Text style={[styles.modalTitle, { marginBottom: 0 }]}>Редактировать</Text>
-              <VoiceInputButton onResult={handleVoiceEditResult} size={34} />
-            </View>
-            <TextInput
-              style={styles.modalInput}
-              value={editName}
-              onChangeText={setEditName}
-              placeholder="Название"
-              placeholderTextColor={colors.textMuted}
-            />
-            <View style={{ flexDirection: 'row' as const, gap: 8 }}>
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <View style={[styles.modalContent, { maxHeight: '85%' }]}>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              <View style={{ flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const, marginBottom: 16 }}>
+                <Text style={[styles.modalTitle, { marginBottom: 0 }]}>Редактировать</Text>
+                <VoiceInputButton onResult={handleVoiceEditResult} size={34} />
+              </View>
               <TextInput
-                style={[styles.modalInput, { flex: 1 }]}
-                value={editQuantity}
-                onChangeText={setEditQuantity}
-                placeholder="Кол-во"
+                style={styles.modalInput}
+                value={editName}
+                onChangeText={setEditName}
+                placeholder="Название"
+                placeholderTextColor={colors.textMuted}
+              />
+              <View style={{ flexDirection: 'row' as const, gap: 8 }}>
+                <TextInput
+                  style={[styles.modalInput, { flex: 1 }]}
+                  value={editQuantity}
+                  onChangeText={setEditQuantity}
+                  placeholder="Кол-во"
+                  placeholderTextColor={colors.textMuted}
+                  keyboardType="numeric"
+                />
+                <TextInput
+                  style={[styles.modalInput, { flex: 1 }]}
+                  value={editUnit}
+                  onChangeText={setEditUnit}
+                  placeholder="Единица"
+                  placeholderTextColor={colors.textMuted}
+                />
+              </View>
+              <TextInput
+                style={styles.modalInput}
+                value={editMinQuantity}
+                onChangeText={setEditMinQuantity}
+                placeholder="Мин. запас"
                 placeholderTextColor={colors.textMuted}
                 keyboardType="numeric"
               />
-              <TextInput
-                style={[styles.modalInput, { flex: 1 }]}
-                value={editUnit}
-                onChangeText={setEditUnit}
-                placeholder="Единица"
-                placeholderTextColor={colors.textMuted}
-              />
-            </View>
-            <TextInput
-              style={styles.modalInput}
-              value={editMinQuantity}
-              onChangeText={setEditMinQuantity}
-              placeholder="Мин. запас"
-              placeholderTextColor={colors.textMuted}
-              keyboardType="numeric"
-            />
-            {categories.length > 0 && (
-              <View style={{ marginBottom: 12 }}>
-                <Text style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 8 }}>Категория:</Text>
-                <View style={{ flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: 6 }}>
-                  <TouchableOpacity
-                    style={[styles.catChip, !editCategoryId && styles.catChipActive]}
-                    onPress={() => setEditCategoryId(undefined)}
-                  >
-                    <Text style={[styles.catChipText, !editCategoryId && styles.catChipTextActive]}>Без категории</Text>
-                  </TouchableOpacity>
-                  {categories.map(cat => (
+              {categories.length > 0 && (
+                <View style={{ marginBottom: 12 }}>
+                  <Text style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 8 }}>Категория:</Text>
+                  <View style={{ flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: 6 }}>
                     <TouchableOpacity
-                      key={cat.id}
-                      style={[styles.catChip, editCategoryId === cat.id && styles.catChipActive]}
-                      onPress={() => setEditCategoryId(cat.id)}
+                      style={[styles.catChip, !editCategoryId && styles.catChipActive]}
+                      onPress={() => setEditCategoryId(undefined)}
                     >
-                      <Text style={[styles.catChipText, editCategoryId === cat.id && styles.catChipTextActive]}>{cat.name}</Text>
+                      <Text style={[styles.catChipText, !editCategoryId && styles.catChipTextActive]}>Без категории</Text>
                     </TouchableOpacity>
-                  ))}
+                    {categories.map(cat => (
+                      <TouchableOpacity
+                        key={cat.id}
+                        style={[styles.catChip, editCategoryId === cat.id && styles.catChipActive]}
+                        onPress={() => setEditCategoryId(cat.id)}
+                      >
+                        <Text style={[styles.catChipText, editCategoryId === cat.id && styles.catChipTextActive]}>{cat.name}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
                 </View>
+              )}
+              <View style={{ flexDirection: 'row' as const, gap: 12 }}>
+                <Button title="Отмена" variant="ghost" onPress={() => { setShowEditModal(false); setEditingItem(null); }} style={{ flex: 1 }} />
+                <Button title="Сохранить" onPress={handleSaveEdit} disabled={!editName.trim()} style={{ flex: 1 }} />
               </View>
-            )}
-            <View style={{ flexDirection: 'row' as const, gap: 12 }}>
-              <Button title="Отмена" variant="ghost" onPress={() => { setShowEditModal(false); setEditingItem(null); }} style={{ flex: 1 }} />
-              <Button title="Сохранить" onPress={handleSaveEdit} disabled={!editName.trim()} style={{ flex: 1 }} />
-            </View>
-            {editingItem && (
-              <CommentsSection entityType="inventory" entityId={editingItem.id} />
-            )}
+              {editingItem && (
+                <CommentsSection entityType="inventory" entityId={editingItem.id} />
+              )}
+            </ScrollView>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );
