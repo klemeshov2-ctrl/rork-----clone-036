@@ -10,7 +10,6 @@ import { useObjects } from '@/providers/ObjectsProvider';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { VoiceInputButton } from '@/components/VoiceInputButton';
-import { CommentsSection } from '@/components/CommentsSection';
 import { parseTaskVoice } from '@/lib/voiceParser';
 import type { TaskType } from '@/types';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -415,10 +414,6 @@ export default function CreateTaskScreen() {
               />
             )}
           </>
-        )}
-
-        {isEditing && editingTask && (
-          <CommentsSection entityType="task" entityId={editingTask.id} />
         )}
 
           <View style={styles.buttons}>

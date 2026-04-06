@@ -14,7 +14,7 @@ import {
   Dimensions,
   Keyboard,
 } from 'react-native';
-import { MessageCircle, Send, RefreshCw, X } from 'lucide-react-native';
+import { MessageCircle, Send, X } from 'lucide-react-native';
 import { useThemeColors } from '@/providers/ThemeProvider';
 import { ThemeColors } from '@/constants/colors';
 import { useComments } from '@/providers/CommentsProvider';
@@ -145,7 +145,7 @@ export function CommentsBottomSheet({ visible, onClose, entityType, entityId, ti
 
   const [inputText, setInputText] = useState('');
   const listRef = useRef<FlatList>(null);
-  const slideAnim = useRef(new Animated.Value(-SCREEN_HEIGHT)).current;
+  const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
 
   const key = `${entityType}:${String(entityId)}`;
   const comments = commentsMap[key] || [];
@@ -166,14 +166,14 @@ export function CommentsBottomSheet({ visible, onClose, entityType, entityId, ti
         friction: 11,
       }).start();
     } else {
-      slideAnim.setValue(-SCREEN_HEIGHT);
+      slideAnim.setValue(SCREEN_HEIGHT);
     }
   }, [visible, slideAnim]);
 
   const handleClose = useCallback(() => {
     Keyboard.dismiss();
     Animated.timing(slideAnim, {
-      toValue: -SCREEN_HEIGHT,
+      toValue: SCREEN_HEIGHT,
       duration: 250,
       useNativeDriver: true,
     }).start(() => {
@@ -191,10 +191,6 @@ export function CommentsBottomSheet({ visible, onClose, entityType, entityId, ti
       listRef.current?.scrollToEnd({ animated: true });
     }, 300);
   }, [inputText, isSending, addComment, entityType, entityId]);
-
-  const handleRefresh = useCallback(() => {
-    loadComments(entityType, String(entityId));
-  }, [loadComments, entityType, entityId]);
 
   const renderComment = useCallback(({ item }: { item: Comment }) => {
     const isOwn = item.userId === userId || item.userEmail === userEmail;
@@ -222,7 +218,7 @@ export function CommentsBottomSheet({ visible, onClose, entityType, entityId, ti
         <KeyboardAvoidingView
           style={styles.keyboardAvoid}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 10 : 0}
         >
           <Animated.View
             style={[
@@ -234,22 +230,17 @@ export function CommentsBottomSheet({ visible, onClose, entityType, entityId, ti
 
             <View style={styles.sheetHeader}>
               <View style={styles.sheetHeaderLeft}>
-                <MessageCircle size={20} color={colors.primary} />
-                <Text style={styles.sheetTitle}>{displayTitle}</Text>
+                <MessageCircle size={18} color={colors.primary} />
+                <Text style={styles.sheetTitle} numberOfLines={1}>{displayTitle}</Text>
                 {comments.length > 0 && (
                   <View style={styles.badge}>
                     <Text style={styles.badgeText}>{comments.length}</Text>
                   </View>
                 )}
               </View>
-              <View style={styles.sheetHeaderRight}>
-                <TouchableOpacity onPress={handleRefresh} style={styles.headerBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                  <RefreshCw size={16} color={colors.textMuted} />
-                </TouchableOpacity>
-                <TouchableOpacity onPress={handleClose} style={styles.headerBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                  <X size={18} color={colors.textMuted} />
-                </TouchableOpacity>
-              </View>
+              <TouchableOpacity onPress={handleClose} style={styles.headerBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <X size={18} color={colors.textMuted} />
+              </TouchableOpacity>
             </View>
 
             <View style={styles.divider} />
@@ -337,16 +328,15 @@ function createStyles(colors: ThemeColors) {
     },
     backdropTouch: {
       flex: 1,
-      minHeight: 60,
     },
     keyboardAvoid: {
+      justifyContent: 'flex-end',
       flex: 1,
-      justifyContent: 'flex-start',
     },
     sheet: {
       backgroundColor: colors.background,
-      borderBottomLeftRadius: 24,
-      borderBottomRightRadius: 24,
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
       maxHeight: SCREEN_HEIGHT * 0.78,
       minHeight: 340,
       overflow: 'hidden',
@@ -372,16 +362,13 @@ function createStyles(colors: ThemeColors) {
       alignItems: 'center',
       gap: 8,
       flex: 1,
-    },
-    sheetHeaderRight: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 6,
+      marginRight: 8,
     },
     sheetTitle: {
-      fontSize: 18,
+      fontSize: 16,
       fontWeight: '700' as const,
       color: colors.text,
+      flexShrink: 1,
     },
     badge: {
       backgroundColor: colors.primary,

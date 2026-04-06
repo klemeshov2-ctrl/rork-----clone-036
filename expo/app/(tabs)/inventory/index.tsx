@@ -10,7 +10,6 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { VoiceInputButton } from '@/components/VoiceInputButton';
-import { CommentsSection } from '@/components/CommentsSection';
 import { parseMaterialVoice } from '@/lib/voiceParser';
 import { isLowInventory } from '@/lib/utils';
 import { useSubscriberGuard } from '@/providers/ProfileProvider';
@@ -522,9 +521,7 @@ export default function InventoryScreen() {
                 <Button title="Отмена" variant="ghost" onPress={() => { setShowEditModal(false); setEditingItem(null); }} style={{ flex: 1 }} />
                 <Button title="Сохранить" onPress={handleSaveEdit} disabled={!editName.trim()} style={{ flex: 1 }} />
               </View>
-              {editingItem && (
-                <CommentsSection entityType="inventory" entityId={editingItem.id} />
-              )}
+
             </ScrollView>
           </View>
         </KeyboardAvoidingView>
