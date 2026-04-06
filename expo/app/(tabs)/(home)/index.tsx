@@ -11,6 +11,7 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { ProfileSelector } from '@/components/ProfileSelector';
+import { NotificationBell } from '@/components/NotificationBell';
 import { VoiceInputButton } from '@/components/VoiceInputButton';
 import { parseObjectVoice } from '@/lib/voiceParser';
 import { useSubscriberGuard } from '@/providers/ProfileProvider';
@@ -231,14 +232,16 @@ export default function ObjectsScreen() {
           <Text style={styles.title}>Объекты</Text>
           <ProfileSelector />
         </View>
-        <View style={{ flexDirection: 'row' as const, gap: 8 }}>
-          <TouchableOpacity style={styles.smallButton} onPress={() => setShowGroupModal(true)}>
-            <FolderPlus size={20} color={colors.text} />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.addButton} onPress={() => setIsAdding(true)}>
-            <Plus size={24} color={colors.text} />
-          </TouchableOpacity>
-        </View>
+        <NotificationBell />
+      </View>
+
+      <View style={styles.actionRow}>
+        <TouchableOpacity style={styles.smallButton} onPress={() => setShowGroupModal(true)}>
+          <FolderPlus size={20} color={colors.text} />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.addButton} onPress={() => setIsAdding(true)}>
+          <Plus size={24} color={colors.text} />
+        </TouchableOpacity>
       </View>
 
       <View style={styles.searchRow}>
@@ -450,6 +453,14 @@ function createStyles(colors: ThemeColors) {
       paddingVertical: 11,
       color: colors.text,
       fontSize: 15,
+    },
+    actionRow: {
+      flexDirection: 'row',
+      justifyContent: 'flex-end',
+      alignItems: 'center',
+      paddingHorizontal: 16,
+      marginBottom: 8,
+      gap: 8,
     },
     sortButton: {
       width: 44,

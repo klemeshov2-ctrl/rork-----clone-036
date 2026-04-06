@@ -1,37 +1,13 @@
 import { Tabs } from "expo-router";
-import { LayoutList, Package, ListChecks, BookOpen, Settings, Bell } from "lucide-react-native";
+import { LayoutList, Package, ListChecks, BookOpen, Settings } from "lucide-react-native";
 import React from "react";
-import { View, Text } from "react-native";
+import { View } from "react-native";
 import { useThemeColors } from "@/providers/ThemeProvider";
-import { useComments } from "@/providers/CommentsProvider";
 import { SyncFloatingButton } from "@/components/SyncFloatingButton";
 import { SyncBottomSheet } from "@/components/SyncBottomSheet";
 
-function NotificationBadge({ count, color }: { count: number; color: string }) {
-  if (count <= 0) return null;
-  return (
-    <View style={{
-      position: 'absolute',
-      top: -4,
-      right: -8,
-      minWidth: 16,
-      height: 16,
-      borderRadius: 8,
-      backgroundColor: color,
-      alignItems: 'center' as const,
-      justifyContent: 'center' as const,
-      paddingHorizontal: 3,
-    }}>
-      <Text style={{ fontSize: 10, fontWeight: '700' as const, color: '#fff' }}>
-        {count > 99 ? '99+' : count}
-      </Text>
-    </View>
-  );
-}
-
 export default function TabLayout() {
   const colors = useThemeColors();
-  const { unreadCount } = useComments();
 
   return (
     <View style={{ flex: 1 }}>
@@ -83,13 +59,7 @@ export default function TabLayout() {
         <Tabs.Screen
           name="notifications"
           options={{
-            title: "Уведомления",
-            tabBarIcon: ({ color }) => (
-              <View>
-                <Bell size={22} color={color} />
-                <NotificationBadge count={unreadCount} color={colors.error} />
-              </View>
-            ),
+            href: null,
           }}
         />
         <Tabs.Screen

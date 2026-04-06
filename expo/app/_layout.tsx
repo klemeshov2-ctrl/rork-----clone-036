@@ -55,7 +55,7 @@ function useNotificationResponseHandler() {
             params: { editId: entityId },
           });
         } else {
-          router.navigate('/(tabs)/notifications' as any);
+          router.push('/notifications' as any);
         }
       }
     });
@@ -87,6 +87,7 @@ function RootLayoutNav() {
       <Stack.Screen name="reminders/create" options={{ title: "Новая задача", headerShown: false }} />
       <Stack.Screen name="object/new-entry" options={{ title: "Новая запись" }} />
       <Stack.Screen name="object/add-contact" options={{ title: "Контакт" }} />
+      <Stack.Screen name="notifications" options={{ title: "Уведомления" }} />
       <Stack.Screen name="modal" options={{ presentation: "modal" }} />
     </Stack>
   );

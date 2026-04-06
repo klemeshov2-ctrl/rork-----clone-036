@@ -14,6 +14,7 @@ import { CommentsSection } from '@/components/CommentsSection';
 import { parseMaterialVoice } from '@/lib/voiceParser';
 import { isLowInventory } from '@/lib/utils';
 import { useSubscriberGuard } from '@/providers/ProfileProvider';
+import { NotificationBell } from '@/components/NotificationBell';
 
 function InventoryCard({ item, onUpdate, onDelete, onEdit, colors }: { 
   item: InventoryItem; 
@@ -250,14 +251,16 @@ export default function InventoryScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <Text style={styles.title}>Склад</Text>
-        <View style={{ flexDirection: 'row' as const, gap: 8 }}>
-          <TouchableOpacity style={styles.smallButton} onPress={() => { setEditingCategoryId(null); setCategoryNameInput(''); setShowCategoryModal(true); }}>
-            <FolderPlus size={20} color={colors.text} />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.addButton} onPress={() => setIsAdding(true)}>
-            <Plus size={24} color={colors.text} />
-          </TouchableOpacity>
-        </View>
+        <NotificationBell />
+      </View>
+
+      <View style={styles.actionRow}>
+        <TouchableOpacity style={styles.smallButton} onPress={() => { setEditingCategoryId(null); setCategoryNameInput(''); setShowCategoryModal(true); }}>
+          <FolderPlus size={20} color={colors.text} />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.addButton} onPress={() => setIsAdding(true)}>
+          <Plus size={24} color={colors.text} />
+        </TouchableOpacity>
       </View>
 
       <View style={styles.searchRow}>
@@ -463,6 +466,7 @@ function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
     header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12 },
+    actionRow: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', paddingHorizontal: 16, marginBottom: 8, gap: 8 },
     title: { fontSize: 28, fontWeight: 'bold', color: colors.text },
     smallButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.surfaceElevated, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border },
     addButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },

@@ -16,6 +16,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'react-native';
 import { Lock, Palette, ChevronRight, Check, LogOut, Delete, RotateCcw, X, HelpCircle, Info, Mail, Cloud, Shield, FileSpreadsheet, User, FileText, Fingerprint, ScanFace } from 'lucide-react-native';
+import { NotificationBell } from '@/components/NotificationBell';
 import { useRouter } from 'expo-router';
 import { useTheme, useThemeColors } from '@/providers/ThemeProvider';
 import { useAuth } from '@/providers/AuthProvider';
@@ -290,8 +291,11 @@ export default function SettingsScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+      <View style={styles.headerRow}>
         <Text style={styles.title}>Настройки</Text>
+        <NotificationBell />
+      </View>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
 
         <Text style={styles.sectionTitle}>Профиль</Text>
         <View style={styles.settingRow}>
@@ -526,11 +530,18 @@ function createStyles(colors: ThemeColors) {
       padding: 16,
       paddingBottom: 100,
     },
+    headerRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: 16,
+      paddingTop: 8,
+      paddingBottom: 12,
+    },
     title: {
       fontSize: 28,
       fontWeight: '800' as const,
       color: colors.text,
-      marginBottom: 28,
       letterSpacing: -0.3,
     },
     sectionTitle: {
