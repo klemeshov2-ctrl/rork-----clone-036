@@ -10,7 +10,7 @@ import { ObjectItem, ObjectGroup } from '@/types';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { ProfileSelector } from '@/components/ProfileSelector';
+
 import { NotificationBell } from '@/components/NotificationBell';
 import { VoiceInputButton } from '@/components/VoiceInputButton';
 import { parseObjectVoice } from '@/lib/voiceParser';
@@ -230,7 +230,6 @@ export default function ObjectsScreen() {
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <Text style={styles.title}>Объекты</Text>
-          <ProfileSelector />
         </View>
         <NotificationBell />
       </View>
