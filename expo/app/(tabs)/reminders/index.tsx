@@ -13,6 +13,9 @@ import { Card } from '@/components/ui/Card';
 import { formatDate } from '@/lib/utils';
 import * as Haptics from 'expo-haptics';
 import { NotificationBell } from '@/components/NotificationBell';
+import { useComments } from '@/providers/CommentsProvider';
+import { CommentsBottomSheet } from '@/components/CommentsBottomSheet';
+import { MessageCircle } from 'lucide-react-native';
 
 type TabKey = 'tasks' | 'checklists';
 
@@ -50,8 +53,15 @@ function SegmentedControl({ activeTab, onTabChange, colors }: { activeTab: TabKe
   );
 }
 
-function TaskCard({ task, objectName, onComplete, onPress, onDelete, colors }: {
-  task: Task; objectName?: string; onComplete: () => void; onPress: () => void; onDelete: () => void; colors: ThemeColors;
+function getShortPreview(text: string, wordCount: number = 3): string {
+  if (!text) return '';
+  const words = text.trim().split(/\s+/);
+  const preview = words.slice(0, wordCount).join(' ');
+  return words.length > wordCount ? preview + '...' : preview;
+}
+
+function TaskCard({ task, objectName, onComplete, onPress, onDelete, onComments, lastComment, commentCount, colors }: {
+  task: Task; objectName?: string; onComplete: () => void; onPress: () => void; onDelete: () => void; onComments: () => void; lastComment?: string; commentCount: number; colors: ThemeColors;
 }) {
   const isOverdue = task.dueDate != null && task.dueDate < new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()).getTime() && !task.isCompleted;
   const hasNoDate = !task.dueDate;
@@ -94,6 +104,22 @@ function TaskCard({ task, objectName, onComplete, onPress, onDelete, colors }: {
           <Trash2 size={16} color={colors.textMuted} />
         </TouchableOpacity>
       </View>
+      <TouchableOpacity onPress={onComments} activeOpacity={0.7} style={{ flexDirection: 'row' as const, alignItems: 'center' as const, marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: colors.border, gap: 8, marginHorizontal: -14, paddingHorizontal: 14 }}>
+        <View style={{ position: 'relative' as const }}>
+          <MessageCircle size={15} color={colors.info} />
+          {commentCount > 0 && (
+            <View style={{ position: 'absolute' as const, top: -5, right: -8, backgroundColor: colors.primary, borderRadius: 7, minWidth: 14, height: 14, alignItems: 'center' as const, justifyContent: 'center' as const, paddingHorizontal: 3 }}>
+              <Text style={{ color: '#fff', fontSize: 9, fontWeight: '700' as const }}>{commentCount}</Text>
+            </View>
+          )}
+        </View>
+        {lastComment ? (
+          <Text style={{ fontSize: 12, color: colors.textSecondary, flex: 1 }} numberOfLines={1}>{getShortPreview(lastComment)}</Text>
+        ) : (
+          <Text style={{ fontSize: 12, color: colors.textMuted, fontStyle: 'italic' as const }}>Комментарии</Text>
+        )}
+        <ChevronDown size={14} color={colors.textMuted} style={{ transform: [{ rotate: '-90deg' }] }} />
+      </TouchableOpacity>
     </Card>
   );
 }
@@ -128,7 +154,10 @@ function TasksTab({ colors }: { colors: ThemeColors }) {
   const router = useRouter();
   const { isLoading, completeTask, uncompleteTask, deleteTask, getOverdueTasks, getTodayTasks, getTomorrowTasks, getLaterTasks, getCompletedTasks, getNoDateTasks } = useTasks();
   const { getObject } = useObjects();
+  const { comments: commentsRaw, loadComments } = useComments();
   const [showCompleted, setShowCompleted] = useState(false);
+  const [commentsTaskId, setCommentsTaskId] = useState<string>('');
+  const [commentsModalVisible, setCommentsModalVisible] = useState(false);
 
   const overdue = useMemo(() => getOverdueTasks(), [getOverdueTasks]);
   const today = useMemo(() => getTodayTasks(), [getTodayTasks]);
@@ -148,9 +177,32 @@ function TasksTab({ colors }: { colors: ThemeColors }) {
     return s;
   }, [overdue, today, tomorrow, later, noDate, completed, showCompleted, colors]);
 
+  const allTasks = useMemo(() => {
+    return [...getOverdueTasks(), ...getTodayTasks(), ...getTomorrowTasks(), ...getLaterTasks(), ...getNoDateTasks(), ...getCompletedTasks()];
+  }, [getOverdueTasks, getTodayTasks, getTomorrowTasks, getLaterTasks, getNoDateTasks, getCompletedTasks]);
+
+  React.useEffect(() => {
+    allTasks.forEach(t => { loadComments('task', t.id); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allTasks.length]);
+
+  const taskCommentsMap = useMemo(() => {
+    const map: Record<string, { count: number; lastText: string }> = {};
+    for (const key of Object.keys(commentsRaw)) {
+      if (key.startsWith('task:')) {
+        const arr = commentsRaw[key];
+        if (arr && arr.length > 0) {
+          map[key] = { count: arr.length, lastText: arr[arr.length - 1].text };
+        }
+      }
+    }
+    return map;
+  }, [commentsRaw]);
+
   const handleComplete = useCallback((task: Task) => { if (task.isCompleted) void uncompleteTask(task.id); else void completeTask(task.id); }, [completeTask, uncompleteTask]);
   const handlePress = useCallback((task: Task) => { if (task.type === 'request' && task.objectId) router.push({ pathname: '/(home)/object-detail' as any, params: { id: task.objectId } }); else router.push({ pathname: '/reminders/create', params: { editId: task.id } }); }, [router]);
   const handleDelete = useCallback((task: Task) => { Alert.alert('Удалить задачу?', 'Это действие нельзя отменить', [{ text: 'Отмена', style: 'cancel' }, { text: 'Удалить', style: 'destructive', onPress: () => deleteTask(task.id) }]); }, [deleteTask]);
+  const handleComments = useCallback((taskId: string) => { setCommentsTaskId(taskId); setCommentsModalVisible(true); }, []);
 
   const activeCount = overdue.length + today.length + tomorrow.length + later.length + noDate.length;
 
@@ -175,6 +227,7 @@ function TasksTab({ colors }: { colors: ThemeColors }) {
   }
 
   return (
+    <>
     <SectionList
       sections={sections}
       keyExtractor={(item) => item.id}
@@ -187,7 +240,8 @@ function TasksTab({ colors }: { colors: ThemeColors }) {
       renderItem={({ item }) => {
         const obj = item.objectId ? getObject(item.objectId) : undefined;
         const displayObjName = obj?.name || item.objectName;
-        return <TaskCard task={item} objectName={displayObjName} onComplete={() => handleComplete(item)} onPress={() => handlePress(item)} onDelete={() => handleDelete(item)} colors={colors} />;
+        const cInfo = taskCommentsMap[`task:${item.id}`];
+        return <TaskCard task={item} objectName={displayObjName} onComplete={() => handleComplete(item)} onPress={() => handlePress(item)} onDelete={() => handleDelete(item)} onComments={() => handleComments(item.id)} lastComment={cInfo?.lastText} commentCount={cInfo?.count || 0} colors={colors} />;
       }}
       contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100 }}
       showsVerticalScrollIndicator={false}
@@ -200,6 +254,14 @@ function TasksTab({ colors }: { colors: ThemeColors }) {
         </TouchableOpacity>
       ) : null}
     />
+    <CommentsBottomSheet
+      visible={commentsModalVisible}
+      onClose={() => setCommentsModalVisible(false)}
+      entityType="task"
+      entityId={commentsTaskId}
+      title="Комментарии к задаче"
+    />
+    </>
   );
 }
 

@@ -15,12 +15,25 @@ import { parseMaterialVoice } from '@/lib/voiceParser';
 import { isLowInventory } from '@/lib/utils';
 import { useSubscriberGuard } from '@/providers/ProfileProvider';
 import { NotificationBell } from '@/components/NotificationBell';
+import { useComments } from '@/providers/CommentsProvider';
+import { CommentsBottomSheet } from '@/components/CommentsBottomSheet';
+import { MessageCircle } from 'lucide-react-native';
 
-function InventoryCard({ item, onUpdate, onDelete, onEdit, colors }: { 
+function getShortPreview(text: string, wordCount: number = 3): string {
+  if (!text) return '';
+  const words = text.trim().split(/\s+/);
+  const preview = words.slice(0, wordCount).join(' ');
+  return words.length > wordCount ? preview + '...' : preview;
+}
+
+function InventoryCard({ item, onUpdate, onDelete, onEdit, onComments, lastComment, commentCount, colors }: { 
   item: InventoryItem; 
   onUpdate: (delta: number) => void;
   onDelete: () => void;
   onEdit: () => void;
+  onComments: () => void;
+  lastComment?: string;
+  commentCount: number;
   colors: ThemeColors;
 }) {
   const isLow = isLowInventory(item.quantity, item.minQuantity);
@@ -49,11 +62,27 @@ function InventoryCard({ item, onUpdate, onDelete, onEdit, colors }: {
           <Trash2 size={16} color={colors.error} />
         </TouchableOpacity>
       </View>
+      <TouchableOpacity onPress={onComments} activeOpacity={0.7} style={{ flexDirection: 'row' as const, alignItems: 'center' as const, marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: colors.border, gap: 8 }}>
+        <View style={{ position: 'relative' as const }}>
+          <MessageCircle size={16} color={colors.info} />
+          {commentCount > 0 && (
+            <View style={{ position: 'absolute' as const, top: -5, right: -8, backgroundColor: colors.primary, borderRadius: 7, minWidth: 14, height: 14, alignItems: 'center' as const, justifyContent: 'center' as const, paddingHorizontal: 3 }}>
+              <Text style={{ color: '#fff', fontSize: 9, fontWeight: '700' as const }}>{commentCount}</Text>
+            </View>
+          )}
+        </View>
+        {lastComment ? (
+          <Text style={{ fontSize: 12, color: colors.textSecondary, flex: 1 }} numberOfLines={1}>{getShortPreview(lastComment)}</Text>
+        ) : (
+          <Text style={{ fontSize: 12, color: colors.textMuted, fontStyle: 'italic' as const }}>Комментарии</Text>
+        )}
+        <ChevronRight size={14} color={colors.textMuted} />
+      </TouchableOpacity>
     </Card>
   );
 }
 
-function CategorySection({ category, items, colors, isExpanded, onToggle, onEdit, onDelete, onUpdate, onDeleteItem, onEditItem }: {
+function CategorySection({ category, items, colors, isExpanded, onToggle, onEdit, onDelete, onUpdate, onDeleteItem, onEditItem, onComments, commentsMap }: {
   category: InventoryCategory | null;
   items: InventoryItem[];
   colors: ThemeColors;
@@ -64,6 +93,8 @@ function CategorySection({ category, items, colors, isExpanded, onToggle, onEdit
   onUpdate: (item: InventoryItem, delta: number) => void;
   onDeleteItem: (id: string) => void;
   onEditItem: (item: InventoryItem) => void;
+  onComments: (itemId: string) => void;
+  commentsMap: Record<string, { count: number; lastText: string }>;
 }) {
   const title = category ? category.name : 'Без категории';
   return (
@@ -84,9 +115,22 @@ function CategorySection({ category, items, colors, isExpanded, onToggle, onEdit
           </TouchableOpacity>
         )}
       </TouchableOpacity>
-      {isExpanded && items.map(item => (
-        <InventoryCard key={item.id} item={item} onUpdate={(delta) => onUpdate(item, delta)} onDelete={() => onDeleteItem(item.id)} onEdit={() => onEditItem(item)} colors={colors} />
-      ))}
+      {isExpanded && items.map(item => {
+        const cInfo = commentsMap[`inventory:${item.id}`];
+        return (
+          <InventoryCard
+            key={item.id}
+            item={item}
+            onUpdate={(delta) => onUpdate(item, delta)}
+            onDelete={() => onDeleteItem(item.id)}
+            onEdit={() => onEditItem(item)}
+            onComments={() => onComments(item.id)}
+            lastComment={cInfo?.lastText}
+            commentCount={cInfo?.count || 0}
+            colors={colors}
+          />
+        );
+      })}
       {isExpanded && items.length === 0 && (
         <Text style={{ fontSize: 13, color: colors.textMuted, paddingLeft: 40, paddingVertical: 8 }}>Пусто</Text>
       )}
@@ -116,10 +160,33 @@ export default function InventoryScreen() {
   const [editUnit, setEditUnit] = useState('');
   const [editMinQuantity, setEditMinQuantity] = useState('');
   const [editCategoryId, setEditCategoryId] = useState<string | undefined>(undefined);
+  const [commentsItemId, setCommentsItemId] = useState<string>('');
+  const [commentsModalVisible, setCommentsModalVisible] = useState(false);
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   const { guardEdit } = useSubscriberGuard();
+  const { comments: commentsRaw, loadComments } = useComments();
   const lowStockItems = items.filter(i => isLowInventory(i.quantity, i.minQuantity));
+
+  const inventoryCommentsMap = useMemo(() => {
+    const map: Record<string, { count: number; lastText: string }> = {};
+    for (const key of Object.keys(commentsRaw)) {
+      if (key.startsWith('inventory:')) {
+        const arr = commentsRaw[key];
+        if (arr && arr.length > 0) {
+          map[key] = { count: arr.length, lastText: arr[arr.length - 1].text };
+        }
+      }
+    }
+    return map;
+  }, [commentsRaw]);
+
+  React.useEffect(() => {
+    items.forEach(item => {
+      loadComments('inventory', item.id);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items.length]);
 
   const filteredItems = useMemo(() => {
     let result = items;
@@ -353,6 +420,8 @@ export default function InventoryScreen() {
               onUpdate={handleUpdateQuantity}
               onDeleteItem={handleDelete}
               onEditItem={handleEditItem}
+              onComments={(itemId) => { setCommentsItemId(itemId); setCommentsModalVisible(true); }}
+              commentsMap={inventoryCommentsMap}
             />
           )}
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100 }}
@@ -460,6 +529,13 @@ export default function InventoryScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+      <CommentsBottomSheet
+        visible={commentsModalVisible}
+        onClose={() => setCommentsModalVisible(false)}
+        entityType="inventory"
+        entityId={commentsItemId}
+        title="Комментарии к материалу"
+      />
     </SafeAreaView>
   );
 }

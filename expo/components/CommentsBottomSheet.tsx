@@ -145,7 +145,7 @@ export function CommentsBottomSheet({ visible, onClose, entityType, entityId, ti
 
   const [inputText, setInputText] = useState('');
   const listRef = useRef<FlatList>(null);
-  const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
+  const slideAnim = useRef(new Animated.Value(-SCREEN_HEIGHT)).current;
 
   const key = `${entityType}:${String(entityId)}`;
   const comments = commentsMap[key] || [];
@@ -166,14 +166,14 @@ export function CommentsBottomSheet({ visible, onClose, entityType, entityId, ti
         friction: 11,
       }).start();
     } else {
-      slideAnim.setValue(SCREEN_HEIGHT);
+      slideAnim.setValue(-SCREEN_HEIGHT);
     }
   }, [visible, slideAnim]);
 
   const handleClose = useCallback(() => {
     Keyboard.dismiss();
     Animated.timing(slideAnim, {
-      toValue: SCREEN_HEIGHT,
+      toValue: -SCREEN_HEIGHT,
       duration: 250,
       useNativeDriver: true,
     }).start(() => {
@@ -221,8 +221,8 @@ export function CommentsBottomSheet({ visible, onClose, entityType, entityId, ti
         />
         <KeyboardAvoidingView
           style={styles.keyboardAvoid}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 10 : 0}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
         >
           <Animated.View
             style={[
@@ -341,14 +341,14 @@ function createStyles(colors: ThemeColors) {
     },
     keyboardAvoid: {
       flex: 1,
-      justifyContent: 'flex-end',
+      justifyContent: 'flex-start',
     },
     sheet: {
       backgroundColor: colors.background,
-      borderTopLeftRadius: 24,
-      borderTopRightRadius: 24,
-      maxHeight: SCREEN_HEIGHT * 0.65,
-      minHeight: 280,
+      borderBottomLeftRadius: 24,
+      borderBottomRightRadius: 24,
+      maxHeight: SCREEN_HEIGHT * 0.78,
+      minHeight: 340,
       overflow: 'hidden',
     },
     handleBar: {
@@ -455,7 +455,7 @@ function createStyles(colors: ThemeColors) {
       borderTopColor: colors.border,
       paddingHorizontal: 12,
       paddingVertical: 8,
-      paddingBottom: Platform.OS === 'ios' ? 28 : 8,
+      paddingBottom: 8,
       backgroundColor: colors.background,
     },
     inputRow: {
