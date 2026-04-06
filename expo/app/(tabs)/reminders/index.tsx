@@ -278,16 +278,16 @@ export default function TasksScreen() {
       <View style={styles.header}>
         <View style={{ flex: 1 }}>
           <Text style={styles.title}>Задачи</Text>
-          <Text style={{ fontSize: 13, color: colors.textMuted, marginTop: 2 }}>
-            {activeTab === 'tasks'
-              ? (activeCount > 0 ? `${activeCount} активных` : 'Нет активных задач')
-              : 'Шаблоны чек-листов'}
-          </Text>
         </View>
         <NotificationBell />
       </View>
 
       <View style={styles.actionRow}>
+        <Text style={{ fontSize: 13, color: colors.textMuted, flex: 1 }}>
+          {activeTab === 'tasks'
+            ? (activeCount > 0 ? `${activeCount} активных` : 'Нет активных задач')
+            : 'Шаблоны чек-листов'}
+        </Text>
         <TouchableOpacity style={styles.addButton} onPress={handleAdd} testID="add-task-btn">
           <Plus size={22} color="#fff" />
         </TouchableOpacity>
@@ -308,7 +308,7 @@ function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
     header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 8, paddingBottom: 8 },
-    actionRow: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', paddingHorizontal: 20, marginBottom: 8 },
+    actionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, marginBottom: 8 },
     title: { fontSize: 28, fontWeight: '800' as const, color: colors.text, letterSpacing: -0.5 },
     addButton: { width: 46, height: 46, borderRadius: 23, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', shadowColor: colors.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 6 },
   });
