@@ -300,8 +300,20 @@ export function CommentsBottomSheet({ visible, onClose, entityType, entityId, ti
                   style={styles.list}
                   contentContainerStyle={styles.listContent}
                   showsVerticalScrollIndicator={false}
+                  inverted={false}
                   onContentSizeChange={() => {
-                    listRef.current?.scrollToEnd({ animated: false });
+                    if (comments.length > 0) {
+                      setTimeout(() => {
+                        listRef.current?.scrollToEnd({ animated: false });
+                      }, 50);
+                    }
+                  }}
+                  onLayout={() => {
+                    if (comments.length > 0) {
+                      setTimeout(() => {
+                        listRef.current?.scrollToEnd({ animated: false });
+                      }, 100);
+                    }
                   }}
                 />
               )}
@@ -365,8 +377,9 @@ function createStyles(colors: ThemeColors, bottomInset: number) {
       backgroundColor: colors.background,
       borderTopLeftRadius: 24,
       borderTopRightRadius: 24,
-      maxHeight: SCREEN_HEIGHT * 0.78,
-      minHeight: 340,
+      maxHeight: SCREEN_HEIGHT * 0.88,
+      minHeight: 400,
+      height: SCREEN_HEIGHT * 0.85,
       overflow: 'hidden',
     },
     handleBar: {
