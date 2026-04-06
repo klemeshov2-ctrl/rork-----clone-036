@@ -221,7 +221,7 @@ export function CommentsBottomSheet({ visible, onClose, entityType, entityId, ti
         />
         <KeyboardAvoidingView
           style={styles.keyboardAvoid}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 10 : 0}
         >
           <Animated.View
@@ -337,16 +337,18 @@ function createStyles(colors: ThemeColors) {
     },
     backdropTouch: {
       flex: 1,
+      minHeight: 60,
     },
     keyboardAvoid: {
+      flex: 1,
       justifyContent: 'flex-end',
     },
     sheet: {
       backgroundColor: colors.background,
       borderTopLeftRadius: 24,
       borderTopRightRadius: 24,
-      maxHeight: SCREEN_HEIGHT * 0.85,
-      minHeight: SCREEN_HEIGHT * 0.45,
+      maxHeight: SCREEN_HEIGHT * 0.65,
+      minHeight: 280,
       overflow: 'hidden',
     },
     handleBar: {
@@ -453,7 +455,7 @@ function createStyles(colors: ThemeColors) {
       borderTopColor: colors.border,
       paddingHorizontal: 12,
       paddingVertical: 8,
-      paddingBottom: Platform.OS === 'ios' ? 28 : 12,
+      paddingBottom: Platform.OS === 'ios' ? 28 : 8,
       backgroundColor: colors.background,
     },
     inputRow: {
