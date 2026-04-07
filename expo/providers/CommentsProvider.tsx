@@ -185,7 +185,10 @@ export const [CommentsProvider, useComments] = createContextHook<CommentsContext
           const newIds = new Set(docs.map(d => d.id));
           const prevIds = prevCommentIdsRef.current;
           const freshComments = docs.filter(d =>
-            !prevIds.has(d.id) && d.userId !== userId && (d.authorId ? d.authorId !== userId : true)
+            !prevIds.has(d.id) &&
+            d.userId !== userId &&
+            (d.authorId ? d.authorId !== userId : true) &&
+            (!activeMasterId || !d.masterId || d.masterId === activeMasterId)
           );
 
           if (prevIds.size > 0 && freshComments.length > 0 && Platform.OS !== 'web') {
@@ -228,10 +231,11 @@ export const [CommentsProvider, useComments] = createContextHook<CommentsContext
         if (readCommentIds.has(c.id)) return false;
         if (c.userId === userId) return false;
         if (c.authorId && c.authorId === userId) return false;
+        if (activeMasterId && c.masterId && c.masterId !== activeMasterId) return false;
         return true;
       })
       .sort((a, b) => b.createdAt - a.createdAt);
-  }, [allComments, readCommentIds, userId]);
+  }, [allComments, readCommentIds, userId, activeMasterId]);
 
   const unreadCount = unreadComments.length;
 
@@ -370,6 +374,14 @@ export const [CommentsProvider, useComments] = createContextHook<CommentsContext
     if (!userId) {
       Alert.alert('Ошибка', 'Авторизация не завершена. Попробуйте позже.');
       return;
+    }
+
+    if (isSubscriberProfile && activeMasterId) {
+      const activeSub = subscriptions.find(s => s.masterId === activeMasterId);
+      if (!activeSub) {
+        Alert.alert('Ошибка', 'Подписка не найдена. Проверьте, что вы подписаны на этого мастера.');
+        return;
+      }
     }
 
     setIsSending(true);

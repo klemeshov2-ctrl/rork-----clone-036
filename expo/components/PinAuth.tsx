@@ -202,7 +202,10 @@ export function PinAuth() {
           >
             <BiometricIcon size={24} color={colors.primary} />
             <Text style={styles.biometricText}>
-              {biometricType === 'face' ? 'Войти по Face ID' : 'Войти по отпечатку'}
+              {Platform.OS === 'ios'
+                ? (biometricType === 'face' ? 'Войти по Face ID' : 'Войти по Touch ID')
+                : (biometricType === 'face' ? 'Войти по распознаванию лица' : 'Войти по отпечатку пальца')
+              }
             </Text>
           </TouchableOpacity>
         )}

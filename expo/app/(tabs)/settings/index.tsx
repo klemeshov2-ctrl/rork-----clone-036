@@ -404,11 +404,16 @@ export default function SettingsScreen() {
             </View>
             <View style={styles.settingInfo}>
               <Text style={styles.settingLabel}>
-                {biometricType === 'face' ? 'Вход по Face ID' : 'Вход по отпечатку'}
+                {Platform.OS === 'ios'
+                  ? (biometricType === 'face' ? 'Вход по Face ID' : 'Вход по Touch ID')
+                  : (biometricType === 'face' ? 'Вход по распознаванию лица' : 'Вход по отпечатку пальца')
+                }
               </Text>
               <Text style={styles.settingDesc}>
                 {biometricAvailable
-                  ? (biometricType === 'face' ? 'Разблокировка через распознавание лица' : 'Разблокировка отпечатком пальца')
+                  ? (Platform.OS === 'ios'
+                    ? (biometricType === 'face' ? 'Разблокировка через Face ID' : 'Разблокировка через Touch ID')
+                    : (biometricType === 'face' ? 'Разблокировка через распознавание лица' : 'Разблокировка отпечатком пальца'))
                   : 'Биометрия недоступна на этом устройстве'
                 }
               </Text>

@@ -2010,13 +2010,45 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
 
   const addSubscription = useCallback(async (name: string, masterUrl: string, subscriberEmail?: string): Promise<MasterSubscription> => {
     let remoteMasterId: string | null = null;
+    let linkValid = false;
     try {
       const masterInfoContent = await downloadPublicFileYandex(masterUrl, 'master_info.json');
       const masterInfo = JSON.parse(masterInfoContent);
       remoteMasterId = masterInfo.masterId || null;
+      if (remoteMasterId) {
+        linkValid = true;
+      }
       console.log('[Backup] Got masterId from master_info.json:', remoteMasterId);
     } catch (e: any) {
       console.log('[Backup] Could not fetch master_info.json:', e?.message);
+    }
+
+    if (!linkValid) {
+      try {
+        const backupContent = await downloadPublicFileYandex(masterUrl, 'master_backup.json');
+        if (backupContent) {
+          linkValid = true;
+          console.log('[Backup] Link validated via master_backup.json');
+        }
+      } catch (e: any) {
+        console.log('[Backup] Could not fetch master_backup.json:', e?.message);
+      }
+    }
+
+    if (!linkValid) {
+      try {
+        const manifestContent = await downloadPublicFileYandex(masterUrl, 'manifest.json');
+        if (manifestContent) {
+          linkValid = true;
+          console.log('[Backup] Link validated via manifest.json');
+        }
+      } catch (e: any) {
+        console.log('[Backup] Could not fetch manifest.json:', e?.message);
+      }
+    }
+
+    if (!linkValid) {
+      throw new Error('Недействительная ссылка. Проверьте адрес и убедитесь, что мастер опубликовал данные.');
     }
 
     const newSub: MasterSubscription = {
