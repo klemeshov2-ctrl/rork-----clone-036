@@ -5,15 +5,18 @@ import {
   StyleSheet,
   FlatList,
   TouchableOpacity,
+  Alert,
 } from 'react-native';
-import { Check, ChevronRight, MessageCircle, MessageSquare } from 'lucide-react-native';
+import { Check, ChevronRight, MessageCircle, MessageSquare, Plus } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useThemeColors } from '@/providers/ThemeProvider';
 import { ThemeColors } from '@/constants/colors';
 import { useComments } from '@/providers/CommentsProvider';
 import { useChat } from '@/providers/ChatProvider';
 import { useObjects } from '@/providers/ObjectsProvider';
-import type { Comment, CommentEntityType, ChatDialog } from '@/types';
+import type { Comment, CommentEntityType, ChatDialog, MasterSubscription } from '@/types';
+import { useBackup } from '@/providers/BackupProvider';
+import { useProfile } from '@/providers/ProfileProvider';
 
 function formatDate(ts: number): string {
   const d = new Date(ts);
@@ -180,9 +183,44 @@ export default function NotificationsScreen() {
   const { unreadComments, markAsRead, markAllAsRead, unreadCount: commentUnreadCount } = useComments();
   const { chats, unreadMessagesCount, userId: chatUserId } = useChat();
   const { getWorkEntry } = useObjects();
+  const { subscriptions } = useBackup();
+  const { isSubscriberProfile, activeProfileId } = useProfile();
   const router = useRouter();
 
   const [activeTab, setActiveTab] = useState<'comments' | 'chats'>('comments');
+
+  const currentUserId = chatUserId;
+
+  const activeSubscription = useMemo(() => {
+    if (isSubscriberProfile) {
+      return subscriptions.find(s => s.id === activeProfileId) || null;
+    }
+    return null;
+  }, [isSubscriberProfile, activeProfileId, subscriptions]);
+
+  const handleStartNewChat = useCallback(() => {
+    if (!currentUserId) {
+      Alert.alert('Ошибка', 'Авторизация не завершена');
+      return;
+    }
+    if (isSubscriberProfile) {
+      const activeSub = activeSubscription;
+      if (activeSub?.masterId) {
+        router.push({
+          pathname: '/chat' as any,
+          params: {
+            masterId: activeSub.masterId,
+            subscriberId: currentUserId,
+            partnerName: activeSub.name || 'Мастер',
+          },
+        });
+      } else {
+        Alert.alert('Нет контактов', 'Сначала добавьте подписку на мастера в разделе синхронизации.');
+      }
+    } else {
+      Alert.alert('Подсказка', 'Чаты создаются подписчиками. Когда подписчик напишет вам, чат появится здесь автоматически.');
+    }
+  }, [currentUserId, isSubscriberProfile, activeSubscription, router]);
 
   const navigateToComment = useCallback((comment: Comment) => {
     markAsRead(comment.id);
@@ -331,17 +369,40 @@ export default function NotificationsScreen() {
               <MessageCircle size={48} color={colors.textMuted} />
               <Text style={styles.emptyTitle}>Нет чатов</Text>
               <Text style={styles.emptySubtext}>
-                Личные сообщения с мастерами и подписчиками будут здесь
+                {isSubscriberProfile
+                  ? 'Напишите мастеру, чтобы начать общение'
+                  : 'Когда подписчик напишет вам, чат появится здесь'}
               </Text>
+              {isSubscriberProfile && (
+                <TouchableOpacity
+                  style={styles.startChatBtn}
+                  onPress={handleStartNewChat}
+                  activeOpacity={0.7}
+                >
+                  <Plus size={18} color="#fff" />
+                  <Text style={styles.startChatBtnText}>Начать чат</Text>
+                </TouchableOpacity>
+              )}
             </View>
           ) : (
-            <FlatList
-              data={chats}
-              renderItem={renderChatItem}
-              keyExtractor={chatKeyExtractor}
-              contentContainerStyle={styles.listContent}
-              showsVerticalScrollIndicator={false}
-            />
+            <View style={{ flex: 1 }}>
+              <FlatList
+                data={chats}
+                renderItem={renderChatItem}
+                keyExtractor={chatKeyExtractor}
+                contentContainerStyle={styles.listContent}
+                showsVerticalScrollIndicator={false}
+              />
+              {isSubscriberProfile && (
+                <TouchableOpacity
+                  style={styles.fab}
+                  onPress={handleStartNewChat}
+                  activeOpacity={0.7}
+                >
+                  <Plus size={24} color="#fff" />
+                </TouchableOpacity>
+              )}
+            </View>
           )}
         </>
       )}
@@ -446,6 +507,38 @@ function createStyles(colors: ThemeColors) {
     },
     listContent: {
       padding: 16,
+    },
+    startChatBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      backgroundColor: colors.primary,
+      paddingHorizontal: 20,
+      paddingVertical: 12,
+      borderRadius: 12,
+      marginTop: 16,
+    },
+    startChatBtnText: {
+      fontSize: 15,
+      fontWeight: '600' as const,
+      color: '#fff',
+    },
+    fab: {
+      position: 'absolute',
+      right: 20,
+      bottom: 20,
+      width: 56,
+      height: 56,
+      borderRadius: 28,
+      backgroundColor: colors.primary,
+      alignItems: 'center',
+      justifyContent: 'center',
+      elevation: 6,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 3 },
+      shadowOpacity: 0.3,
+      shadowRadius: 5,
+      zIndex: 100,
     },
   });
 }
