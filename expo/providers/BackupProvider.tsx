@@ -2051,6 +2051,10 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
       throw new Error('Недействительная ссылка. Проверьте адрес и убедитесь, что мастер опубликовал данные.');
     }
 
+    if (!remoteMasterId) {
+      console.log('[Backup] Warning: Link is valid but no masterId found. Comments and chats will not work correctly.');
+    }
+
     const newSub: MasterSubscription = {
       id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
       name,

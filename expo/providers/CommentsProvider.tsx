@@ -376,10 +376,18 @@ export const [CommentsProvider, useComments] = createContextHook<CommentsContext
       return;
     }
 
-    if (isSubscriberProfile && activeMasterId) {
-      const activeSub = subscriptions.find(s => s.masterId === activeMasterId);
+    if (isSubscriberProfile) {
+      const activeSub = subscriptions.find(s => s.id === activeProfileId);
       if (!activeSub) {
-        Alert.alert('Ошибка', 'Подписка не найдена. Проверьте, что вы подписаны на этого мастера.');
+        Alert.alert('Ошибка', 'Подписка не найдена. Выберите активный профиль мастера.');
+        return;
+      }
+      if (!activeSub.masterId) {
+        Alert.alert('Ошибка', 'Недействительная подписка. Ссылка мастера не содержит идентификатор. Удалите подписку и добавьте заново с корректной ссылкой.');
+        return;
+      }
+      if (!activeMasterId || activeMasterId === userId) {
+        Alert.alert('Ошибка', 'Не удалось определить мастера для отправки комментария. Проверьте подписку.');
         return;
       }
     }
@@ -425,7 +433,7 @@ export const [CommentsProvider, useComments] = createContextHook<CommentsContext
     } finally {
       setIsSending(false);
     }
-  }, [userId, userEmail, displayName, activeMasterId, backupMasterId, isSubscriberProfile]);
+  }, [userId, userEmail, displayName, activeMasterId, backupMasterId, isSubscriberProfile, subscriptions, activeProfileId]);
 
   return useMemo(() => ({
     comments: commentsMap,

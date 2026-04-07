@@ -6,8 +6,10 @@ import {
   FlatList,
   TouchableOpacity,
   Animated,
+  Modal,
+  Alert,
 } from 'react-native';
-import { Bell, Check, ChevronRight, MessageCircle, MessageSquare } from 'lucide-react-native';
+import { Check, ChevronRight, MessageCircle, MessageSquare, Plus, User } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { Stack } from 'expo-router';
 import { useThemeColors } from '@/providers/ThemeProvider';
@@ -15,7 +17,9 @@ import { ThemeColors } from '@/constants/colors';
 import { useComments } from '@/providers/CommentsProvider';
 import { useChat } from '@/providers/ChatProvider';
 import { useObjects } from '@/providers/ObjectsProvider';
-import type { Comment, CommentEntityType, ChatDialog } from '@/types';
+import { useBackup } from '@/providers/BackupProvider';
+import { useProfile } from '@/providers/ProfileProvider';
+import type { Comment, CommentEntityType, ChatDialog, MasterSubscription } from '@/types';
 
 function formatDate(ts: number): string {
   const d = new Date(ts);
@@ -179,12 +183,15 @@ function ChatCard({
 export default function NotificationsScreen() {
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const { unreadComments, markAsRead, markAllAsRead, unreadCount: commentUnreadCount } = useComments();
-  const { chats, unreadMessagesCount, userId: chatUserId } = useChat();
+  const { unreadComments, markAsRead, markAllAsRead, unreadCount: commentUnreadCount, userId: commentsUserId } = useComments();
+  const { chats, unreadMessagesCount, userId: chatUserId, sendMessage } = useChat();
   const { getWorkEntry } = useObjects();
+  const { subscriptions, masterId: backupMasterId } = useBackup();
+  const { isSubscriberProfile, activeProfileId } = useProfile();
   const router = useRouter();
 
   const [activeTab, setActiveTab] = useState<'comments' | 'chats'>('comments');
+  const [showNewChatModal, setShowNewChatModal] = useState(false);
   const slideAnim = useRef(new Animated.Value(0)).current;
 
   const switchTab = useCallback((tab: 'comments' | 'chats') => {
@@ -241,6 +248,56 @@ export default function NotificationsScreen() {
   const handleMarkAllRead = useCallback(() => {
     markAllAsRead();
   }, [markAllAsRead]);
+
+  const availableContacts = useMemo(() => {
+    const contacts: { masterId: string; subscriberId: string; name: string }[] = [];
+    const userId = chatUserId || commentsUserId;
+    if (!userId) return contacts;
+
+    if (isSubscriberProfile) {
+      const activeSub = subscriptions.find(s => s.id === activeProfileId);
+      if (activeSub?.masterId) {
+        const alreadyHasChat = chats.some(
+          c => c.masterId === activeSub.masterId && c.subscriberId === userId
+        );
+        if (!alreadyHasChat) {
+          contacts.push({
+            masterId: activeSub.masterId,
+            subscriberId: userId,
+            name: activeSub.name || 'Мастер',
+          });
+        }
+      }
+    } else {
+      subscriptions.forEach(sub => {
+        if (sub.masterId) {
+          const alreadyHasChat = chats.some(
+            c => c.masterId === userId && c.subscriberId === sub.masterId
+          );
+          if (!alreadyHasChat) {
+            contacts.push({
+              masterId: userId,
+              subscriberId: sub.masterId,
+              name: sub.name,
+            });
+          }
+        }
+      });
+    }
+    return contacts;
+  }, [chatUserId, commentsUserId, isSubscriberProfile, activeProfileId, subscriptions, chats]);
+
+  const handleStartChat = useCallback((contact: { masterId: string; subscriberId: string; name: string }) => {
+    setShowNewChatModal(false);
+    router.push({
+      pathname: '/chat' as any,
+      params: {
+        masterId: contact.masterId,
+        subscriberId: contact.subscriberId,
+        partnerName: contact.name,
+      },
+    });
+  }, [router]);
 
   const renderCommentItem = useCallback(({ item }: { item: Comment }) => (
     <UnreadCommentCard
@@ -353,16 +410,108 @@ export default function NotificationsScreen() {
               <Text style={styles.emptySubtext}>
                 Личные сообщения с мастерами и подписчиками будут здесь
               </Text>
+              {subscriptions.length > 0 && (
+                <TouchableOpacity
+                  style={styles.startChatBtn}
+                  onPress={() => {
+                    if (availableContacts.length === 1) {
+                      handleStartChat(availableContacts[0]);
+                    } else if (availableContacts.length > 1) {
+                      setShowNewChatModal(true);
+                    } else {
+                      const userId = chatUserId || commentsUserId;
+                      if (!userId) {
+                        Alert.alert('Ошибка', 'Авторизация не завершена');
+                        return;
+                      }
+                      if (isSubscriberProfile) {
+                        const activeSub = subscriptions.find(s => s.id === activeProfileId);
+                        if (activeSub?.masterId) {
+                          router.push({
+                            pathname: '/chat' as any,
+                            params: {
+                              masterId: activeSub.masterId,
+                              subscriberId: userId,
+                              partnerName: activeSub.name || 'Мастер',
+                            },
+                          });
+                        }
+                      }
+                    }
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Plus size={18} color="#fff" />
+                  <Text style={styles.startChatBtnText}>Начать чат</Text>
+                </TouchableOpacity>
+              )}
             </View>
           ) : (
-            <FlatList
-              data={chats}
-              renderItem={renderChatItem}
-              keyExtractor={chatKeyExtractor}
-              contentContainerStyle={styles.listContent}
-              showsVerticalScrollIndicator={false}
-            />
+            <View style={{ flex: 1 }}>
+              <FlatList
+                data={chats}
+                renderItem={renderChatItem}
+                keyExtractor={chatKeyExtractor}
+                contentContainerStyle={styles.listContent}
+                showsVerticalScrollIndicator={false}
+              />
+              {availableContacts.length > 0 && (
+                <TouchableOpacity
+                  style={styles.fab}
+                  onPress={() => {
+                    if (availableContacts.length === 1) {
+                      handleStartChat(availableContacts[0]);
+                    } else {
+                      setShowNewChatModal(true);
+                    }
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Plus size={22} color="#fff" />
+                </TouchableOpacity>
+              )}
+            </View>
           )}
+
+          <Modal
+            visible={showNewChatModal}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setShowNewChatModal(false)}
+          >
+            <View style={styles.modalOverlay}>
+              <TouchableOpacity
+                style={styles.modalOverlayTouch}
+                activeOpacity={1}
+                onPress={() => setShowNewChatModal(false)}
+              />
+              <View style={styles.modalContent}>
+                <Text style={styles.modalTitle}>Новый чат</Text>
+                <View style={styles.modalDivider} />
+                {availableContacts.map((contact, idx) => (
+                  <TouchableOpacity
+                    key={`${contact.masterId}-${contact.subscriberId}-${idx}`}
+                    style={styles.contactItem}
+                    onPress={() => handleStartChat(contact)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.contactAvatar}>
+                      <User size={18} color={colors.primary} />
+                    </View>
+                    <Text style={styles.contactName}>{contact.name}</Text>
+                    <ChevronRight size={16} color={colors.textMuted} />
+                  </TouchableOpacity>
+                ))}
+                <TouchableOpacity
+                  style={styles.modalCancelBtn}
+                  onPress={() => setShowNewChatModal(false)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.modalCancelText}>Отмена</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Modal>
         </>
       )}
     </View>
@@ -466,6 +615,98 @@ function createStyles(colors: ThemeColors) {
     },
     listContent: {
       padding: 16,
+    },
+    startChatBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      backgroundColor: colors.primary,
+      paddingHorizontal: 20,
+      paddingVertical: 12,
+      borderRadius: 12,
+      marginTop: 16,
+    },
+    startChatBtnText: {
+      fontSize: 15,
+      fontWeight: '600' as const,
+      color: '#fff',
+    },
+    fab: {
+      position: 'absolute',
+      right: 20,
+      bottom: 20,
+      width: 52,
+      height: 52,
+      borderRadius: 26,
+      backgroundColor: colors.primary,
+      alignItems: 'center',
+      justifyContent: 'center',
+      elevation: 4,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.25,
+      shadowRadius: 4,
+    },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    modalOverlayTouch: {
+      ...StyleSheet.absoluteFillObject,
+    },
+    modalContent: {
+      backgroundColor: colors.surface,
+      borderRadius: 18,
+      padding: 20,
+      width: '85%',
+      maxWidth: 400,
+    },
+    modalTitle: {
+      fontSize: 18,
+      fontWeight: '700' as const,
+      color: colors.text,
+      textAlign: 'center',
+      marginBottom: 12,
+    },
+    modalDivider: {
+      height: 1,
+      backgroundColor: colors.border,
+      marginBottom: 8,
+    },
+    contactItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 12,
+      paddingHorizontal: 4,
+      gap: 12,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    contactAvatar: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: colors.primary + '20',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    contactName: {
+      flex: 1,
+      fontSize: 15,
+      fontWeight: '500' as const,
+      color: colors.text,
+    },
+    modalCancelBtn: {
+      alignItems: 'center',
+      paddingVertical: 14,
+      marginTop: 8,
+    },
+    modalCancelText: {
+      fontSize: 15,
+      fontWeight: '600' as const,
+      color: colors.textMuted,
     },
   });
 }
