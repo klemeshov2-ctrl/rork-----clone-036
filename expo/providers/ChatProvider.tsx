@@ -60,7 +60,10 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
   const [readMessageIds, setReadMessageIds] = useState<Set<string>>(new Set());
   const messagesUnsubRef = useRef<(() => void) | null>(null);
   const chatsUnsubRef = useRef<(() => void) | null>(null);
+  const globalMsgUnsubRef = useRef<(() => void) | null>(null);
   const prevMessageIdsRef = useRef<Set<string>>(new Set());
+  const prevGlobalMsgIdsRef = useRef<Set<string>>(new Set());
+  const activeLoadedChatRef = useRef<string | null>(null);
 
   useEffect(() => {
     setUserId(commentsUserId);
@@ -102,6 +105,87 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
     });
     return Array.from(ids).filter(Boolean);
   }, [backupMasterId, userId, subscriptions]);
+
+  useEffect(() => {
+    if (!userId) return;
+    console.log('[Chat] Setting up global messages listener for notifications');
+
+    if (globalMsgUnsubRef.current) {
+      globalMsgUnsubRef.current();
+      globalMsgUnsubRef.current = null;
+    }
+
+    try {
+      const q = query(
+        collection(firestore, 'messages'),
+        where('masterId', 'in', relevantMasterIds.length > 0 ? relevantMasterIds.slice(0, 30) : [userId]),
+        orderBy('createdAt', 'desc'),
+        limit(50)
+      );
+
+      const unsubscribe = onSnapshot(
+        q,
+        (snapshot) => {
+          const newIds = new Set<string>();
+          const freshMessages: Array<{ id: string; senderId: string; senderName: string; text: string; masterId: string; subscriberId: string }> = [];
+
+          snapshot.docs.forEach((d) => {
+            const data = d.data();
+            newIds.add(d.id);
+            if (
+              !prevGlobalMsgIdsRef.current.has(d.id) &&
+              typeof data.senderId === 'string' &&
+              data.senderId !== userId
+            ) {
+              const chatKey = `${data.masterId}_${data.subscriberId}`;
+              if (activeLoadedChatRef.current !== chatKey) {
+                freshMessages.push({
+                  id: d.id,
+                  senderId: data.senderId as string,
+                  senderName: typeof data.senderName === 'string' ? data.senderName : 'Сообщение',
+                  text: typeof data.text === 'string' ? data.text : '',
+                  masterId: typeof data.masterId === 'string' ? data.masterId : '',
+                  subscriberId: typeof data.subscriberId === 'string' ? data.subscriberId : '',
+                });
+              }
+            }
+          });
+
+          if (prevGlobalMsgIdsRef.current.size > 0 && freshMessages.length > 0 && Platform.OS !== 'web') {
+            for (const m of freshMessages.slice(0, 3)) {
+              Notifications.scheduleNotificationAsync({
+                content: {
+                  title: `${m.senderName}`,
+                  body: m.text.substring(0, 100),
+                  data: { type: 'chat', masterId: m.masterId, subscriberId: m.subscriberId },
+                },
+                trigger: null,
+              }).catch((err) => {
+                console.log('[Chat] Global notification error:', err);
+              });
+            }
+          }
+
+          prevGlobalMsgIdsRef.current = newIds;
+        },
+        (error) => {
+          console.log('[Chat] Global messages listener error:', error?.message);
+        }
+      );
+
+      globalMsgUnsubRef.current = unsubscribe;
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.log('[Chat] Global messages listener setup error:', msg);
+    }
+
+    return () => {
+      if (globalMsgUnsubRef.current) {
+        globalMsgUnsubRef.current();
+        globalMsgUnsubRef.current = null;
+      }
+    };
+  }, [userId, relevantMasterIds]);
 
   useEffect(() => {
     if (!userId) return;
@@ -183,6 +267,7 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
 
   const loadMessages = useCallback((masterId: string, subscriberId: string) => {
     console.log('[Chat] Loading messages for master:', masterId, 'subscriber:', subscriberId);
+    activeLoadedChatRef.current = `${masterId}_${subscriberId}`;
 
     if (messagesUnsubRef.current) {
       messagesUnsubRef.current();
@@ -222,28 +307,7 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
             });
           });
 
-          const newIds = new Set(docs.map(d => d.id));
-          const prevIds = prevMessageIdsRef.current;
-          const freshMessages = docs.filter(d =>
-            !prevIds.has(d.id) && d.senderId !== userId
-          );
-
-          if (prevIds.size > 0 && freshMessages.length > 0 && Platform.OS !== 'web') {
-            for (const m of freshMessages.slice(0, 3)) {
-              Notifications.scheduleNotificationAsync({
-                content: {
-                  title: `${m.senderName || 'Сообщение'}`,
-                  body: m.text.substring(0, 100),
-                  data: { type: 'chat', masterId: m.masterId, subscriberId: m.subscriberId },
-                },
-                trigger: null,
-              }).catch((err) => {
-                console.log('[Chat] Notification error:', err);
-              });
-            }
-          }
-
-          prevMessageIdsRef.current = newIds;
+          prevMessageIdsRef.current = new Set(docs.map(d => d.id));
           console.log('[Chat] Messages snapshot received:', docs.length);
           setMessages(docs);
           setIsLoadingMessages(false);
@@ -359,6 +423,7 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
         messagesUnsubRef.current();
         messagesUnsubRef.current = null;
       }
+      activeLoadedChatRef.current = null;
     };
   }, []);
 

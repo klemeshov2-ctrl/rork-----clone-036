@@ -239,13 +239,7 @@ export const [CommentsProvider, useComments] = createContextHook<CommentsContext
 
   const unreadCount = unreadComments.length;
 
-  useEffect(() => {
-    if (Platform.OS !== 'web' && unreadCount > 0) {
-      Notifications.setBadgeCountAsync(unreadCount).catch(() => {});
-    } else if (Platform.OS !== 'web') {
-      Notifications.setBadgeCountAsync(0).catch(() => {});
-    }
-  }, [unreadCount]);
+  // Badge count is now set in _layout.tsx combining comments + chat unreads
 
   const markAsRead = useCallback((commentId: string) => {
     setReadCommentIds(prev => {

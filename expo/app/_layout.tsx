@@ -14,8 +14,8 @@ import { TasksProvider } from "@/providers/TasksProvider";
 import { KnowledgeProvider } from "@/providers/KnowledgeProvider";
 import { RemindersProvider } from "@/providers/RemindersProvider";
 import { BackupProvider } from "@/providers/BackupProvider";
-import { CommentsProvider } from "@/providers/CommentsProvider";
-import { ChatProvider } from "@/providers/ChatProvider";
+import { CommentsProvider, useComments } from "@/providers/CommentsProvider";
+import { ChatProvider, useChat } from "@/providers/ChatProvider";
 import { SyncPanelProvider } from "@/providers/SyncPanelProvider";
 import { PinAuth } from "@/components/PinAuth";
 import { initLogger } from "@/lib/logger";
@@ -40,6 +40,18 @@ function useNotificationResponseHandler() {
       const data = response.notification.request.content.data as Record<string, string> | undefined;
       console.log('[Notifications] Response received, data:', data);
       if (!data) return;
+
+      if (data.type === 'chat' && data.masterId && data.subscriberId) {
+        router.push({
+          pathname: '/chat' as any,
+          params: {
+            masterId: data.masterId,
+            subscriberId: data.subscriberId,
+            partnerName: data.senderName || 'Чат',
+          },
+        });
+        return;
+      }
 
       const { commentId, entityType, entityId } = data;
       if (commentId && entityType && entityId) {
@@ -67,6 +79,23 @@ function useNotificationResponseHandler() {
       }
     };
   }, [router]);
+}
+
+function useBadgeCount() {
+  const { unreadCount: commentUnread } = useComments();
+  const { unreadMessagesCount: chatUnread } = useChat();
+
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    const total = commentUnread + chatUnread;
+    Notifications.setBadgeCountAsync(total).catch(() => {});
+    console.log('[Badge] Updated badge count:', total, '(comments:', commentUnread, 'chat:', chatUnread, ')');
+  }, [commentUnread, chatUnread]);
+}
+
+function BadgeUpdater() {
+  useBadgeCount();
+  return null;
 }
 
 function RootLayoutNav() {
@@ -120,7 +149,12 @@ function AuthGate() {
     return <PinAuth />;
   }
 
-  return <RootLayoutNav />;
+  return (
+    <>
+      <BadgeUpdater />
+      <RootLayoutNav />
+    </>
+  );
 }
 
 const loadingStyles = StyleSheet.create({
