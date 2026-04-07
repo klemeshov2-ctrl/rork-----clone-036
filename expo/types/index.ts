@@ -166,6 +166,7 @@ export interface MasterSubscription {
   id: string;
   name: string;
   masterUrl: string;
+  masterId?: string;
   autoSyncEnabled: boolean;
   syncInterval: SyncIntervalKey;
   lastSyncTimestamp: number | null;
@@ -183,4 +184,15 @@ export interface Comment {
   text: string;
   createdAt: number;
   masterId?: string;
+  authorId?: string;
+  authorName?: string;
+  subscriberId?: string;
+}
+
+export interface FirestoreSubscription {
+  masterId: string;
+  subscriberId: string;
+  subscriberName: string;
+  masterUrl: string;
+  createdAt: number;
 }

@@ -17,6 +17,7 @@ import {
   limit,
 } from 'firebase/firestore';
 import { useBackup } from './BackupProvider';
+import { useProfile } from './ProfileProvider';
 import type { Comment, CommentEntityType } from '@/types';
 import * as Notifications from 'expo-notifications';
 
@@ -37,6 +38,7 @@ interface CommentsContextType {
   unreadCount: number;
   markAsRead: (commentId: string) => void;
   markAllAsRead: () => void;
+  activeMasterId: string | null;
 }
 
 function makeKey(entityType: string, entityId: string): string {
@@ -44,7 +46,8 @@ function makeKey(entityType: string, entityId: string): string {
 }
 
 export const [CommentsProvider, useComments] = createContextHook<CommentsContextType>(() => {
-  const { userEmail, masterId: backupMasterId } = useBackup();
+  const { userEmail, masterId: backupMasterId, subscriptions } = useBackup();
+  const { activeProfileId, isSubscriberProfile } = useProfile();
 
   const [userId, setUserId] = useState<string | null>(null);
   const [commentsMap, setCommentsMap] = useState<Record<string, Comment[]>>({});
@@ -105,15 +108,54 @@ export const [CommentsProvider, useComments] = createContextHook<CommentsContext
     return () => unsubscribe();
   }, []);
 
+  const activeMasterId = useMemo(() => {
+    if (!isSubscriberProfile) {
+      return backupMasterId || userId;
+    }
+    const activeSub = subscriptions.find(s => s.id === activeProfileId);
+    if (activeSub?.masterId) {
+      return activeSub.masterId;
+    }
+    return backupMasterId || userId;
+  }, [isSubscriberProfile, activeProfileId, subscriptions, backupMasterId, userId]);
+
+  useEffect(() => {
+    console.log('[Comments] Active masterId changed:', activeMasterId, 'isSubscriber:', isSubscriberProfile);
+    Object.values(unsubscribeMap.current).forEach(unsub => unsub());
+    unsubscribeMap.current = {};
+    setCommentsMap({});
+  }, [activeMasterId, isSubscriberProfile]);
+
+  const relevantMasterIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (backupMasterId) ids.add(backupMasterId);
+    if (userId) ids.add(userId);
+    subscriptions.forEach(s => {
+      if (s.masterId) ids.add(s.masterId);
+    });
+    return Array.from(ids).filter(Boolean);
+  }, [backupMasterId, userId, subscriptions]);
+
   useEffect(() => {
     if (!userId) return;
-    console.log('[Comments] Setting up global comments subscription...');
+    console.log('[Comments] Setting up global comments subscription, relevantMasterIds:', relevantMasterIds);
     try {
-      const q = query(
-        collection(firestore, 'comments'),
-        orderBy('createdAt', 'desc'),
-        limit(200)
-      );
+      let q;
+      if (relevantMasterIds.length > 0 && relevantMasterIds.length <= 30) {
+        q = query(
+          collection(firestore, 'comments'),
+          where('masterId', 'in', relevantMasterIds),
+          orderBy('createdAt', 'desc'),
+          limit(200)
+        );
+      } else {
+        q = query(
+          collection(firestore, 'comments'),
+          orderBy('createdAt', 'desc'),
+          limit(200)
+        );
+      }
+
       const unsubscribe = onSnapshot(
         q,
         (snapshot) => {
@@ -134,14 +176,16 @@ export const [CommentsProvider, useComments] = createContextHook<CommentsContext
               text: typeof data.text === 'string' ? data.text : '',
               createdAt,
               masterId: typeof data.masterId === 'string' ? data.masterId : undefined,
+              authorId: typeof data.authorId === 'string' ? data.authorId : undefined,
+              authorName: typeof data.authorName === 'string' ? data.authorName : undefined,
+              subscriberId: typeof data.subscriberId === 'string' ? data.subscriberId : undefined,
             });
           });
 
           const newIds = new Set(docs.map(d => d.id));
           const prevIds = prevCommentIdsRef.current;
-          const currentMasterId = backupMasterId || userId;
           const freshComments = docs.filter(d =>
-            !prevIds.has(d.id) && d.userId !== userId && d.masterId !== currentMasterId
+            !prevIds.has(d.id) && d.userId !== userId && (d.authorId ? d.authorId !== userId : true)
           );
 
           if (prevIds.size > 0 && freshComments.length > 0 && Platform.OS !== 'web') {
@@ -149,9 +193,10 @@ export const [CommentsProvider, useComments] = createContextHook<CommentsContext
               const entityLabel = c.entityType === 'work_entry' ? 'Запись работ'
                 : c.entityType === 'inventory' ? 'Склад'
                 : c.entityType === 'task' ? 'Задача' : 'Комментарий';
+              const authorLabel = c.authorName || c.userName || 'Аноним';
               Notifications.scheduleNotificationAsync({
                 content: {
-                  title: `Новый комментарий — ${entityLabel}`,
+                  title: `${authorLabel} — ${entityLabel}`,
                   body: c.text.substring(0, 100),
                   data: { commentId: c.id, entityType: c.entityType, entityId: c.entityId },
                 },
@@ -175,14 +220,18 @@ export const [CommentsProvider, useComments] = createContextHook<CommentsContext
       const msg = e instanceof Error ? e.message : String(e);
       console.log('[Comments] Global subscription setup error:', msg);
     }
-  }, [userId, backupMasterId]);
+  }, [userId, relevantMasterIds]);
 
   const unreadComments = useMemo(() => {
-    const currentMasterId = backupMasterId || userId;
     return allComments
-      .filter(c => !readCommentIds.has(c.id) && c.userId !== userId && c.masterId !== currentMasterId)
+      .filter(c => {
+        if (readCommentIds.has(c.id)) return false;
+        if (c.userId === userId) return false;
+        if (c.authorId && c.authorId === userId) return false;
+        return true;
+      })
       .sort((a, b) => b.createdAt - a.createdAt);
-  }, [allComments, readCommentIds, userId, backupMasterId]);
+  }, [allComments, readCommentIds, userId]);
 
   const unreadCount = unreadComments.length;
 
@@ -232,15 +281,28 @@ export const [CommentsProvider, useComments] = createContextHook<CommentsContext
         text: typeof data.text === 'string' ? data.text : '',
         createdAt: createdAt as number,
         masterId: typeof data.masterId === 'string' ? data.masterId : undefined,
+        authorId: typeof data.authorId === 'string' ? data.authorId : undefined,
+        authorName: typeof data.authorName === 'string' ? data.authorName : undefined,
+        subscriberId: typeof data.subscriberId === 'string' ? data.subscriberId : undefined,
       });
     });
     docs.sort((a, b) => a.createdAt - b.createdAt);
     return docs;
   }, []);
 
+  const filterForSubscriber = useCallback((docs: Comment[]): Comment[] => {
+    if (!isSubscriberProfile || !activeMasterId || !userId) return docs;
+    return docs.filter(c =>
+      c.userId === userId ||
+      c.userId === activeMasterId ||
+      (c.authorId && (c.authorId === userId || c.authorId === activeMasterId)) ||
+      (!c.authorId && !c.subscriberId)
+    );
+  }, [isSubscriberProfile, activeMasterId, userId]);
+
   const loadComments = useCallback((entityType: CommentEntityType, entityId: string) => {
     const key = makeKey(entityType, entityId);
-    console.log('[Comments] Subscribing to comments for', key);
+    console.log('[Comments] Subscribing to comments for', key, 'masterId:', activeMasterId);
 
     if (unsubscribeMap.current[key]) {
       unsubscribeMap.current[key]();
@@ -250,18 +312,24 @@ export const [CommentsProvider, useComments] = createContextHook<CommentsContext
     setIsLoading(true);
 
     try {
-      const q = query(
-        collection(firestore, 'comments'),
+      const constraints: ReturnType<typeof where>[] = [
         where('entityType', '==', String(entityType)),
-        where('entityId', '==', String(entityId))
-      );
+        where('entityId', '==', String(entityId)),
+      ];
 
-      console.log('[Comments] Trying onSnapshot for', key);
+      if (activeMasterId) {
+        constraints.push(where('masterId', '==', activeMasterId));
+      }
+
+      const q = query(collection(firestore, 'comments'), ...constraints);
+
+      console.log('[Comments] Trying onSnapshot for', key, 'with masterId filter:', !!activeMasterId);
 
       const unsubscribe = onSnapshot(
         q,
         (snapshot) => {
-          const docs = parseSnapshot(snapshot as unknown as { docs: Array<{ id: string; data: () => Record<string, unknown> }> });
+          let docs = parseSnapshot(snapshot as unknown as { docs: Array<{ id: string; data: () => Record<string, unknown> }> });
+          docs = filterForSubscriber(docs);
           console.log('[Comments] onSnapshot received', docs.length, 'comments for', key);
           setCommentsMap((prev) => ({ ...prev, [key]: docs }));
           setIsLoading(false);
@@ -271,7 +339,8 @@ export const [CommentsProvider, useComments] = createContextHook<CommentsContext
           console.log('[Comments] Falling back to getDocs for', key);
           try {
             const snapshot = await getDocs(q);
-            const docs = parseSnapshot(snapshot as unknown as { docs: Array<{ id: string; data: () => Record<string, unknown> }> });
+            let docs = parseSnapshot(snapshot as unknown as { docs: Array<{ id: string; data: () => Record<string, unknown> }> });
+            docs = filterForSubscriber(docs);
             console.log('[Comments] getDocs received', docs.length, 'comments for', key);
             setCommentsMap((prev) => ({ ...prev, [key]: docs }));
           } catch (fallbackErr: unknown) {
@@ -288,7 +357,7 @@ export const [CommentsProvider, useComments] = createContextHook<CommentsContext
       console.log('[Comments] loadComments error:', msg);
       setIsLoading(false);
     }
-  }, [parseSnapshot]);
+  }, [parseSnapshot, activeMasterId, filterForSubscriber]);
 
   useEffect(() => {
     return () => {
@@ -296,8 +365,6 @@ export const [CommentsProvider, useComments] = createContextHook<CommentsContext
       unsubscribeMap.current = {};
     };
   }, []);
-
-  const _effectiveMasterId = backupMasterId || userId;
 
   const addComment = useCallback(async (entityType: CommentEntityType, entityId: string, text: string) => {
     if (!userId) {
@@ -308,19 +375,35 @@ export const [CommentsProvider, useComments] = createContextHook<CommentsContext
     setIsSending(true);
     try {
       const resolvedName = displayName || userEmail || 'Аноним';
-      const resolvedMasterId = backupMasterId || userId;
-      console.log('[Comments] Adding comment:', { entityType, entityId, userId, masterId: resolvedMasterId, userName: resolvedName });
+      const resolvedMasterId = activeMasterId || backupMasterId || userId;
+      const isSubscriber = isSubscriberProfile && activeMasterId && activeMasterId !== userId;
 
-      await addDoc(collection(firestore, 'comments'), {
+      console.log('[Comments] Adding comment:', {
+        entityType, entityId, userId,
+        masterId: resolvedMasterId,
+        authorId: userId,
+        authorName: resolvedName,
+        isSubscriber,
+      });
+
+      const commentData: Record<string, unknown> = {
         entityType: String(entityType),
         entityId: String(entityId),
         userId,
         masterId: resolvedMasterId,
+        authorId: userId,
+        authorName: resolvedName,
         userEmail: userEmail || '',
         userName: resolvedName,
         text,
         createdAt: serverTimestamp(),
-      });
+      };
+
+      if (isSubscriber) {
+        commentData.subscriberId = userId;
+      }
+
+      await addDoc(collection(firestore, 'comments'), commentData);
 
       console.log('[Comments] Comment added successfully');
     } catch (e: unknown) {
@@ -330,7 +413,7 @@ export const [CommentsProvider, useComments] = createContextHook<CommentsContext
     } finally {
       setIsSending(false);
     }
-  }, [userId, userEmail, displayName, backupMasterId]);
+  }, [userId, userEmail, displayName, activeMasterId, backupMasterId, isSubscriberProfile]);
 
   return useMemo(() => ({
     comments: commentsMap,
@@ -346,5 +429,6 @@ export const [CommentsProvider, useComments] = createContextHook<CommentsContext
     unreadCount,
     markAsRead,
     markAllAsRead,
-  }), [commentsMap, loadComments, addComment, isLoading, isSending, userId, displayName, setDisplayName, unreadComments, unreadCount, markAsRead, markAllAsRead]);
+    activeMasterId,
+  }), [commentsMap, loadComments, addComment, isLoading, isSending, userId, displayName, setDisplayName, unreadComments, unreadCount, markAsRead, markAllAsRead, activeMasterId]);
 });

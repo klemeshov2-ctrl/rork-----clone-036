@@ -58,6 +58,8 @@ import {
   doc,
   setDoc,
   getDoc,
+  addDoc,
+  collection,
   serverTimestamp,
 } from 'firebase/firestore';
 import {
@@ -2007,17 +2009,46 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
   }, [refreshProfiles]);
 
   const addSubscription = useCallback(async (name: string, masterUrl: string, subscriberEmail?: string): Promise<MasterSubscription> => {
+    let remoteMasterId: string | null = null;
+    try {
+      const masterInfoContent = await downloadPublicFileYandex(masterUrl, 'master_info.json');
+      const masterInfo = JSON.parse(masterInfoContent);
+      remoteMasterId = masterInfo.masterId || null;
+      console.log('[Backup] Got masterId from master_info.json:', remoteMasterId);
+    } catch (e: any) {
+      console.log('[Backup] Could not fetch master_info.json:', e?.message);
+    }
+
     const newSub: MasterSubscription = {
       id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
       name,
       masterUrl,
+      masterId: remoteMasterId || undefined,
       autoSyncEnabled: false,
       syncInterval: 'daily',
       lastSyncTimestamp: null,
     };
     const updated = [...subscriptions, newSub];
     await saveSubscriptions(updated);
-    console.log('[Backup] Added subscription:', newSub.id, name);
+    console.log('[Backup] Added subscription:', newSub.id, name, 'masterId:', remoteMasterId);
+
+    if (remoteMasterId && auth.currentUser) {
+      try {
+        const subscriberUid = auth.currentUser.uid;
+        const storedDisplayName = await AsyncStorage.getItem('@user_display_name');
+        const subscriberName = storedDisplayName || name || ('Подписчик_' + subscriberUid.slice(0, 6));
+        await addDoc(collection(firestore, 'subscriptions'), {
+          masterId: remoteMasterId,
+          subscriberId: subscriberUid,
+          subscriberName,
+          masterUrl,
+          createdAt: serverTimestamp(),
+        });
+        console.log('[Backup] Created Firestore subscription doc: masterId=', remoteMasterId, 'subscriberId=', subscriberUid);
+      } catch (firestoreErr: any) {
+        console.log('[Backup] Failed to create Firestore subscription doc:', firestoreErr?.message);
+      }
+    }
 
     if (accessToken && isMasterEnabled) {
       const emailToGrant = subscriberEmail || '';

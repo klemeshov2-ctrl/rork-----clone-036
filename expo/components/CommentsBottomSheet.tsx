@@ -60,6 +60,7 @@ function formatCommentDate(ts: number): string {
 }
 
 function getDisplayLabel(comment: Comment): string {
+  if (comment.authorName && comment.authorName !== 'Аноним') return comment.authorName;
   if (comment.userName && comment.userName !== 'Аноним') return comment.userName;
   if (comment.userEmail) return comment.userEmail;
   return 'Аноним';
