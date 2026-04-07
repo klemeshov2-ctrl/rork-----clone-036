@@ -410,41 +410,41 @@ export default function NotificationsScreen() {
               <Text style={styles.emptySubtext}>
                 Личные сообщения с мастерами и подписчиками будут здесь
               </Text>
-              {subscriptions.length > 0 && (
-                <TouchableOpacity
-                  style={styles.startChatBtn}
-                  onPress={() => {
-                    if (availableContacts.length === 1) {
-                      handleStartChat(availableContacts[0]);
-                    } else if (availableContacts.length > 1) {
-                      setShowNewChatModal(true);
+              <TouchableOpacity
+                style={styles.startChatBtn}
+                onPress={() => {
+                  const userId = chatUserId || commentsUserId;
+                  if (!userId) {
+                    Alert.alert('Ошибка', 'Авторизация не завершена');
+                    return;
+                  }
+                  if (availableContacts.length === 1) {
+                    handleStartChat(availableContacts[0]);
+                  } else if (availableContacts.length > 1) {
+                    setShowNewChatModal(true);
+                  } else if (isSubscriberProfile) {
+                    const activeSub = subscriptions.find(s => s.id === activeProfileId);
+                    if (activeSub?.masterId) {
+                      router.push({
+                        pathname: '/chat' as any,
+                        params: {
+                          masterId: activeSub.masterId,
+                          subscriberId: userId,
+                          partnerName: activeSub.name || 'Мастер',
+                        },
+                      });
                     } else {
-                      const userId = chatUserId || commentsUserId;
-                      if (!userId) {
-                        Alert.alert('Ошибка', 'Авторизация не завершена');
-                        return;
-                      }
-                      if (isSubscriberProfile) {
-                        const activeSub = subscriptions.find(s => s.id === activeProfileId);
-                        if (activeSub?.masterId) {
-                          router.push({
-                            pathname: '/chat' as any,
-                            params: {
-                              masterId: activeSub.masterId,
-                              subscriberId: userId,
-                              partnerName: activeSub.name || 'Мастер',
-                            },
-                          });
-                        }
-                      }
+                      Alert.alert('Нет контактов', 'Сначала добавьте подписку на мастера в разделе синхронизации.');
                     }
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Plus size={18} color="#fff" />
-                  <Text style={styles.startChatBtnText}>Начать чат</Text>
-                </TouchableOpacity>
-              )}
+                  } else {
+                    Alert.alert('Нет контактов', 'Чтобы начать чат, у вас должны быть подписчики или вы должны быть подписаны на мастера.');
+                  }
+                }}
+                activeOpacity={0.7}
+              >
+                <Plus size={18} color="#fff" />
+                <Text style={styles.startChatBtnText}>Начать чат</Text>
+              </TouchableOpacity>
             </View>
           ) : (
             <View style={{ flex: 1 }}>
