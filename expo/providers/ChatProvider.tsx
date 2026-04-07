@@ -116,22 +116,12 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
     const isMaster = !isSubscriberProfile;
 
     try {
-      let q;
-      if (isMaster && relevantMasterIds.length > 0 && relevantMasterIds.length <= 30) {
-        q = query(
-          collection(firestore, 'chats'),
-          where('masterId', 'in', relevantMasterIds),
-          orderBy('lastMessageTime', 'desc'),
-          limit(100)
-        );
-      } else {
-        q = query(
-          collection(firestore, 'chats'),
-          where('subscriberId', '==', userId),
-          orderBy('lastMessageTime', 'desc'),
-          limit(100)
-        );
-      }
+      const q = query(
+        collection(firestore, 'chats'),
+        where('participants', 'array-contains', userId),
+        orderBy('lastMessageTime', 'desc'),
+        limit(100)
+      );
 
       const unsubscribe = onSnapshot(
         q,
@@ -302,16 +292,21 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
       const activeSub = subscriptions.find(s => s.masterId === masterId);
 
       if (chatSnap.exists()) {
-        await updateDoc(chatRef, {
+        const updateData: Record<string, unknown> = {
           lastMessage: text,
           lastMessageTime: serverTimestamp(),
           unreadCount: (chatSnap.data().unreadCount || 0) + 1,
           ...(isMaster ? { masterName: resolvedName } : { subscriberName: resolvedName }),
-        });
+        };
+        if (!chatSnap.data().participants) {
+          updateData.participants = [masterId, subscriberId];
+        }
+        await updateDoc(chatRef, updateData);
       } else {
         await setDoc(chatRef, {
           masterId,
           subscriberId,
+          participants: [masterId, subscriberId],
           masterName: isMaster ? resolvedName : (activeSub?.name || 'Мастер'),
           subscriberName: isMaster ? (activeSub?.name || 'Подписчик') : resolvedName,
           lastMessage: text,
