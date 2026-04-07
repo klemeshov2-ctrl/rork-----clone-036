@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback } from 'react';
+import React, { useMemo, useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -6,15 +6,16 @@ import {
   FlatList,
   TouchableOpacity,
 } from 'react-native';
-import { Bell, Check, ChevronRight } from 'lucide-react-native';
+import { Check, ChevronRight, MessageCircle, MessageSquare } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useThemeColors } from '@/providers/ThemeProvider';
 import { ThemeColors } from '@/constants/colors';
 import { useComments } from '@/providers/CommentsProvider';
+import { useChat } from '@/providers/ChatProvider';
 import { useObjects } from '@/providers/ObjectsProvider';
-import type { Comment, CommentEntityType } from '@/types';
+import type { Comment, CommentEntityType, ChatDialog } from '@/types';
 
-function formatCommentDate(ts: number): string {
+function formatDate(ts: number): string {
   const d = new Date(ts);
   const now = new Date();
   const isToday =
@@ -83,7 +84,7 @@ function UnreadCommentCard({
           </Text>
         </View>
         <Text style={{ fontSize: 11, color: colors.textMuted, flex: 1 }} numberOfLines={1}>
-          {formatCommentDate(comment.createdAt)}
+          {formatDate(comment.createdAt)}
         </Text>
         <ChevronRight size={16} color={colors.textMuted} />
       </View>
@@ -91,7 +92,83 @@ function UnreadCommentCard({
         {comment.text}
       </Text>
       <Text style={{ fontSize: 12, color: colors.textSecondary }}>
-        {comment.userName || comment.userEmail || 'Аноним'}
+        {comment.authorName || comment.userName || comment.userEmail || 'Аноним'}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
+function ChatCard({
+  chat,
+  colors,
+  userId,
+  onPress,
+}: {
+  chat: ChatDialog;
+  colors: ThemeColors;
+  userId: string | null;
+  onPress: () => void;
+}) {
+  const isMaster = chat.masterId === userId;
+  const partnerName = isMaster ? chat.subscriberName : chat.masterName;
+  const hasUnread = chat.unreadCount > 0;
+
+  return (
+    <TouchableOpacity
+      style={{
+        backgroundColor: colors.surfaceElevated,
+        borderRadius: 14,
+        padding: 14,
+        marginBottom: 10,
+        borderWidth: 1,
+        borderColor: hasUnread ? colors.info + '40' : colors.border,
+        borderLeftWidth: hasUnread ? 3 : 1,
+        borderLeftColor: hasUnread ? colors.info : colors.border,
+      }}
+      onPress={onPress}
+      activeOpacity={0.7}
+    >
+      <View style={{ flexDirection: 'row' as const, alignItems: 'center' as const, marginBottom: 6 }}>
+        <View style={{
+          width: 36,
+          height: 36,
+          borderRadius: 18,
+          backgroundColor: colors.info + '20',
+          alignItems: 'center' as const,
+          justifyContent: 'center' as const,
+          marginRight: 10,
+        }}>
+          <MessageCircle size={18} color={colors.info} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <View style={{ flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const }}>
+            <Text style={{ fontSize: 15, fontWeight: '600' as const, color: colors.text }} numberOfLines={1}>
+              {partnerName}
+            </Text>
+            {hasUnread && (
+              <View style={{
+                backgroundColor: colors.info,
+                borderRadius: 10,
+                minWidth: 20,
+                height: 20,
+                alignItems: 'center' as const,
+                justifyContent: 'center' as const,
+                paddingHorizontal: 6,
+              }}>
+                <Text style={{ fontSize: 11, fontWeight: '700' as const, color: '#fff' }}>
+                  {chat.unreadCount > 99 ? '99+' : chat.unreadCount}
+                </Text>
+              </View>
+            )}
+          </View>
+          <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 2 }} numberOfLines={1}>
+            {chat.lastMessage || 'Нет сообщений'}
+          </Text>
+        </View>
+        <ChevronRight size={16} color={colors.textMuted} style={{ marginLeft: 8 }} />
+      </View>
+      <Text style={{ fontSize: 11, color: colors.textMuted, textAlign: 'right' as const }}>
+        {formatDate(chat.lastMessageTime)}
       </Text>
     </TouchableOpacity>
   );
@@ -100,15 +177,16 @@ function UnreadCommentCard({
 export default function NotificationsScreen() {
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const { unreadComments, markAsRead, markAllAsRead } = useComments();
+  const { unreadComments, markAsRead, markAllAsRead, unreadCount: commentUnreadCount } = useComments();
+  const { chats, unreadMessagesCount, userId: chatUserId } = useChat();
   const { getWorkEntry } = useObjects();
   const router = useRouter();
 
+  const [activeTab, setActiveTab] = useState<'comments' | 'chats'>('comments');
+
   const navigateToComment = useCallback((comment: Comment) => {
     markAsRead(comment.id);
-
     console.log('[Notifications] Navigating to comment:', comment.entityType, comment.entityId);
-
     switch (comment.entityType) {
       case 'work_entry': {
         const entry = getWorkEntry(comment.entityId);
@@ -136,11 +214,22 @@ export default function NotificationsScreen() {
     }
   }, [markAsRead, getWorkEntry, router]);
 
+  const navigateToChat = useCallback((chat: ChatDialog) => {
+    router.push({
+      pathname: '/chat' as any,
+      params: {
+        masterId: chat.masterId,
+        subscriberId: chat.subscriberId,
+        partnerName: chat.masterId === chatUserId ? chat.subscriberName : chat.masterName,
+      },
+    });
+  }, [router, chatUserId]);
+
   const handleMarkAllRead = useCallback(() => {
     markAllAsRead();
   }, [markAllAsRead]);
 
-  const renderItem = useCallback(({ item }: { item: Comment }) => (
+  const renderCommentItem = useCallback(({ item }: { item: Comment }) => (
     <UnreadCommentCard
       comment={item}
       colors={colors}
@@ -148,42 +237,113 @@ export default function NotificationsScreen() {
     />
   ), [colors, navigateToComment]);
 
-  const keyExtractor = useCallback((item: Comment) => item.id, []);
+  const renderChatItem = useCallback(({ item }: { item: ChatDialog }) => (
+    <ChatCard
+      chat={item}
+      colors={colors}
+      userId={chatUserId}
+      onPress={() => navigateToChat(item)}
+    />
+  ), [colors, chatUserId, navigateToChat]);
+
+  const commentKeyExtractor = useCallback((item: Comment) => item.id, []);
+  const chatKeyExtractor = useCallback((item: ChatDialog) => item.id, []);
 
   return (
     <View style={styles.container}>
-      {unreadComments.length > 0 && (
-        <View style={styles.headerActions}>
-          <Text style={styles.countText}>
-            {unreadComments.length} непрочитанных
+      <View style={styles.tabBar}>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'comments' && styles.tabActive]}
+          onPress={() => setActiveTab('comments')}
+          activeOpacity={0.7}
+        >
+          <MessageSquare size={16} color={activeTab === 'comments' ? colors.primary : colors.textMuted} />
+          <Text style={[styles.tabText, activeTab === 'comments' && styles.tabTextActive]}>
+            Комментарии
           </Text>
-          <TouchableOpacity
-            style={styles.markAllBtn}
-            onPress={handleMarkAllRead}
-            activeOpacity={0.7}
-          >
-            <Check size={14} color={colors.primary} />
-            <Text style={styles.markAllText}>Прочитать все</Text>
-          </TouchableOpacity>
-        </View>
-      )}
+          {commentUnreadCount > 0 && (
+            <View style={[styles.tabBadge, { backgroundColor: colors.primary }]}>
+              <Text style={styles.tabBadgeText}>
+                {commentUnreadCount > 99 ? '99+' : commentUnreadCount}
+              </Text>
+            </View>
+          )}
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'chats' && styles.tabActive]}
+          onPress={() => setActiveTab('chats')}
+          activeOpacity={0.7}
+        >
+          <MessageCircle size={16} color={activeTab === 'chats' ? colors.primary : colors.textMuted} />
+          <Text style={[styles.tabText, activeTab === 'chats' && styles.tabTextActive]}>
+            Чаты
+          </Text>
+          {unreadMessagesCount > 0 && (
+            <View style={[styles.tabBadge, { backgroundColor: colors.info }]}>
+              <Text style={styles.tabBadgeText}>
+                {unreadMessagesCount > 99 ? '99+' : unreadMessagesCount}
+              </Text>
+            </View>
+          )}
+        </TouchableOpacity>
+      </View>
 
-      {unreadComments.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <Bell size={48} color={colors.textMuted} />
-          <Text style={styles.emptyTitle}>Нет уведомлений</Text>
-          <Text style={styles.emptySubtext}>
-            Новые комментарии будут отображаться здесь
-          </Text>
-        </View>
+      {activeTab === 'comments' ? (
+        <>
+          {unreadComments.length > 0 && (
+            <View style={styles.headerActions}>
+              <Text style={styles.countText}>
+                {unreadComments.length} непрочитанных
+              </Text>
+              <TouchableOpacity
+                style={styles.markAllBtn}
+                onPress={handleMarkAllRead}
+                activeOpacity={0.7}
+              >
+                <Check size={14} color={colors.primary} />
+                <Text style={styles.markAllText}>Прочитать все</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {unreadComments.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <MessageSquare size={48} color={colors.textMuted} />
+              <Text style={styles.emptyTitle}>Нет комментариев</Text>
+              <Text style={styles.emptySubtext}>
+                Новые комментарии будут отображаться здесь
+              </Text>
+            </View>
+          ) : (
+            <FlatList
+              data={unreadComments}
+              renderItem={renderCommentItem}
+              keyExtractor={commentKeyExtractor}
+              contentContainerStyle={styles.listContent}
+              showsVerticalScrollIndicator={false}
+            />
+          )}
+        </>
       ) : (
-        <FlatList
-          data={unreadComments}
-          renderItem={renderItem}
-          keyExtractor={keyExtractor}
-          contentContainerStyle={styles.listContent}
-          showsVerticalScrollIndicator={false}
-        />
+        <>
+          {chats.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <MessageCircle size={48} color={colors.textMuted} />
+              <Text style={styles.emptyTitle}>Нет чатов</Text>
+              <Text style={styles.emptySubtext}>
+                Личные сообщения с мастерами и подписчиками будут здесь
+              </Text>
+            </View>
+          ) : (
+            <FlatList
+              data={chats}
+              renderItem={renderChatItem}
+              keyExtractor={chatKeyExtractor}
+              contentContainerStyle={styles.listContent}
+              showsVerticalScrollIndicator={false}
+            />
+          )}
+        </>
       )}
     </View>
   );
@@ -194,6 +354,49 @@ function createStyles(colors: ThemeColors) {
     container: {
       flex: 1,
       backgroundColor: colors.background,
+    },
+    tabBar: {
+      flexDirection: 'row',
+      backgroundColor: colors.surface,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+      paddingHorizontal: 8,
+    },
+    tab: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      paddingVertical: 12,
+      borderBottomWidth: 2,
+      borderBottomColor: 'transparent',
+    },
+    tabActive: {
+      borderBottomColor: colors.primary,
+    },
+    tabText: {
+      fontSize: 14,
+      fontWeight: '500' as const,
+      color: colors.textMuted,
+    },
+    tabTextActive: {
+      color: colors.primary,
+      fontWeight: '600' as const,
+    },
+    tabBadge: {
+      minWidth: 18,
+      height: 18,
+      borderRadius: 9,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 4,
+      marginLeft: 2,
+    },
+    tabBadgeText: {
+      fontSize: 10,
+      fontWeight: '700' as const,
+      color: '#fff',
     },
     headerActions: {
       flexDirection: 'row',
@@ -206,7 +409,7 @@ function createStyles(colors: ThemeColors) {
     },
     countText: {
       fontSize: 14,
-      fontWeight: '600',
+      fontWeight: '600' as const,
       color: colors.textSecondary,
     },
     markAllBtn: {
@@ -220,7 +423,7 @@ function createStyles(colors: ThemeColors) {
     },
     markAllText: {
       fontSize: 13,
-      fontWeight: '600',
+      fontWeight: '600' as const,
       color: colors.primary,
     },
     emptyContainer: {
@@ -232,7 +435,7 @@ function createStyles(colors: ThemeColors) {
     },
     emptyTitle: {
       fontSize: 18,
-      fontWeight: '600',
+      fontWeight: '600' as const,
       color: colors.textSecondary,
       marginTop: 4,
     },

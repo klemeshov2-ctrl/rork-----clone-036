@@ -15,6 +15,7 @@ import { KnowledgeProvider } from "@/providers/KnowledgeProvider";
 import { RemindersProvider } from "@/providers/RemindersProvider";
 import { BackupProvider } from "@/providers/BackupProvider";
 import { CommentsProvider } from "@/providers/CommentsProvider";
+import { ChatProvider } from "@/providers/ChatProvider";
 import { SyncPanelProvider } from "@/providers/SyncPanelProvider";
 import { PinAuth } from "@/components/PinAuth";
 import { initLogger } from "@/lib/logger";
@@ -88,6 +89,7 @@ function RootLayoutNav() {
       <Stack.Screen name="object/new-entry" options={{ title: "Новая запись" }} />
       <Stack.Screen name="object/add-contact" options={{ title: "Контакт" }} />
       <Stack.Screen name="notifications" options={{ title: "Уведомления" }} />
+      <Stack.Screen name="chat" options={{ title: "Чат" }} />
       <Stack.Screen name="modal" options={{ presentation: "modal" }} />
     </Stack>
   );
@@ -164,9 +166,11 @@ export default function RootLayout() {
                           <RemindersProvider>
                             <BackupProvider>
                               <CommentsProvider>
-                                <SyncPanelProvider>
-                                  <AuthGate />
-                                </SyncPanelProvider>
+                                <ChatProvider>
+                                  <SyncPanelProvider>
+                                    <AuthGate />
+                                  </SyncPanelProvider>
+                                </ChatProvider>
                               </CommentsProvider>
                             </BackupProvider>
                           </RemindersProvider>

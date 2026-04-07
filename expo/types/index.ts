@@ -196,3 +196,25 @@ export interface FirestoreSubscription {
   masterUrl: string;
   createdAt: number;
 }
+
+export interface ChatMessage {
+  id: string;
+  masterId: string;
+  subscriberId: string;
+  text: string;
+  senderId: string;
+  senderName: string;
+  createdAt: number;
+  isRead: boolean;
+}
+
+export interface ChatDialog {
+  id: string;
+  masterId: string;
+  subscriberId: string;
+  masterName: string;
+  subscriberName: string;
+  lastMessage: string;
+  lastMessageTime: number;
+  unreadCount: number;
+}

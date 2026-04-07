@@ -4,11 +4,15 @@ import { Bell } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useThemeColors } from '@/providers/ThemeProvider';
 import { useComments } from '@/providers/CommentsProvider';
+import { useChat } from '@/providers/ChatProvider';
 
 export function NotificationBell({ size = 40 }: { size?: number }) {
   const colors = useThemeColors();
-  const { unreadCount } = useComments();
+  const { unreadCount: commentUnread } = useComments();
+  const { unreadMessagesCount: chatUnread } = useChat();
   const router = useRouter();
+
+  const totalUnread = commentUnread + chatUnread;
 
   return (
     <TouchableOpacity
@@ -27,7 +31,7 @@ export function NotificationBell({ size = 40 }: { size?: number }) {
       testID="notification-bell"
     >
       <Bell size={size * 0.5} color={colors.text} />
-      {unreadCount > 0 && (
+      {totalUnread > 0 && (
         <View
           style={[
             styles.badge,
@@ -35,7 +39,7 @@ export function NotificationBell({ size = 40 }: { size?: number }) {
           ]}
         >
           <Text style={styles.badgeText}>
-            {unreadCount > 99 ? '99+' : unreadCount}
+            {totalUnread > 99 ? '99+' : totalUnread}
           </Text>
         </View>
       )}

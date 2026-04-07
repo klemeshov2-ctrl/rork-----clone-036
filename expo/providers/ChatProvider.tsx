@@ -1,0 +1,382 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import createContextHook from '@nkzw/create-context-hook';
+import { auth, firestore } from '@/config/firebase';
+import {
+  collection,
+  addDoc,
+  query,
+  where,
+  onSnapshot,
+  serverTimestamp,
+  Timestamp,
+  orderBy,
+  limit,
+  getDocs,
+  doc,
+  setDoc,
+  updateDoc,
+  getDoc,
+  writeBatch,
+} from 'firebase/firestore';
+import { useBackup } from './BackupProvider';
+import { useProfile } from './ProfileProvider';
+import { useComments } from './CommentsProvider';
+import type { ChatMessage, ChatDialog } from '@/types';
+import * as Notifications from 'expo-notifications';
+
+const DISPLAY_NAME_KEY = '@user_display_name';
+const READ_MESSAGE_IDS_KEY = '@read_message_ids';
+
+interface ChatContextType {
+  chats: ChatDialog[];
+  messages: ChatMessage[];
+  loadMessages: (masterId: string, subscriberId: string) => void;
+  sendMessage: (masterId: string, subscriberId: string, text: string) => Promise<void>;
+  markChatAsRead: (masterId: string, subscriberId: string) => void;
+  unreadMessagesCount: number;
+  isLoadingChats: boolean;
+  isLoadingMessages: boolean;
+  isSending: boolean;
+  userId: string | null;
+}
+
+function getChatDocId(masterId: string, subscriberId: string): string {
+  return `${masterId}_${subscriberId}`;
+}
+
+export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => {
+  const { userEmail, masterId: backupMasterId, subscriptions } = useBackup();
+  const { activeProfileId, isSubscriberProfile } = useProfile();
+  const { userId: commentsUserId, displayName } = useComments();
+
+  const [userId, setUserId] = useState<string | null>(null);
+  const [chats, setChats] = useState<ChatDialog[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [isLoadingChats, setIsLoadingChats] = useState(false);
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+  const [isSending, setIsSending] = useState(false);
+  const [readMessageIds, setReadMessageIds] = useState<Set<string>>(new Set());
+  const messagesUnsubRef = useRef<(() => void) | null>(null);
+  const chatsUnsubRef = useRef<(() => void) | null>(null);
+  const prevMessageIdsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    setUserId(commentsUserId);
+  }, [commentsUserId]);
+
+  useEffect(() => {
+    AsyncStorage.getItem(READ_MESSAGE_IDS_KEY).then(stored => {
+      if (stored) {
+        try {
+          const ids = JSON.parse(stored) as string[];
+          setReadMessageIds(new Set(ids));
+        } catch { /* ignore */ }
+      }
+    }).catch(() => {});
+  }, []);
+
+  const persistReadIds = useCallback((ids: Set<string>) => {
+    const arr = Array.from(ids);
+    AsyncStorage.setItem(READ_MESSAGE_IDS_KEY, JSON.stringify(arr)).catch(() => {});
+  }, []);
+
+  const activeMasterId = useMemo(() => {
+    if (!isSubscriberProfile) {
+      return backupMasterId || userId;
+    }
+    const activeSub = subscriptions.find(s => s.id === activeProfileId);
+    if (activeSub?.masterId) {
+      return activeSub.masterId;
+    }
+    return backupMasterId || userId;
+  }, [isSubscriberProfile, activeProfileId, subscriptions, backupMasterId, userId]);
+
+  const relevantMasterIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (backupMasterId) ids.add(backupMasterId);
+    if (userId) ids.add(userId);
+    subscriptions.forEach(s => {
+      if (s.masterId) ids.add(s.masterId);
+    });
+    return Array.from(ids).filter(Boolean);
+  }, [backupMasterId, userId, subscriptions]);
+
+  useEffect(() => {
+    if (!userId) return;
+    console.log('[Chat] Setting up chats subscription, userId:', userId);
+    setIsLoadingChats(true);
+
+    if (chatsUnsubRef.current) {
+      chatsUnsubRef.current();
+      chatsUnsubRef.current = null;
+    }
+
+    const isMaster = !isSubscriberProfile;
+
+    try {
+      let q;
+      if (isMaster && relevantMasterIds.length > 0 && relevantMasterIds.length <= 30) {
+        q = query(
+          collection(firestore, 'chats'),
+          where('masterId', 'in', relevantMasterIds),
+          orderBy('lastMessageTime', 'desc'),
+          limit(100)
+        );
+      } else {
+        q = query(
+          collection(firestore, 'chats'),
+          where('subscriberId', '==', userId),
+          orderBy('lastMessageTime', 'desc'),
+          limit(100)
+        );
+      }
+
+      const unsubscribe = onSnapshot(
+        q,
+        (snapshot) => {
+          const docs: ChatDialog[] = [];
+          snapshot.docs.forEach((d) => {
+            const data = d.data();
+            const lastMessageTime = data.lastMessageTime instanceof Timestamp
+              ? data.lastMessageTime.toMillis()
+              : (typeof data.lastMessageTime === 'number' ? data.lastMessageTime : Date.now());
+            docs.push({
+              id: d.id,
+              masterId: typeof data.masterId === 'string' ? data.masterId : '',
+              subscriberId: typeof data.subscriberId === 'string' ? data.subscriberId : '',
+              masterName: typeof data.masterName === 'string' ? data.masterName : 'Мастер',
+              subscriberName: typeof data.subscriberName === 'string' ? data.subscriberName : 'Подписчик',
+              lastMessage: typeof data.lastMessage === 'string' ? data.lastMessage : '',
+              lastMessageTime,
+              unreadCount: typeof data.unreadCount === 'number' ? data.unreadCount : 0,
+            });
+          });
+          console.log('[Chat] Chats snapshot received:', docs.length);
+          setChats(docs);
+          setIsLoadingChats(false);
+        },
+        (error) => {
+          console.log('[Chat] Chats subscription error:', error?.message);
+          setIsLoadingChats(false);
+        }
+      );
+
+      chatsUnsubRef.current = unsubscribe;
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.log('[Chat] Chats subscription setup error:', msg);
+      setIsLoadingChats(false);
+    }
+
+    return () => {
+      if (chatsUnsubRef.current) {
+        chatsUnsubRef.current();
+        chatsUnsubRef.current = null;
+      }
+    };
+  }, [userId, isSubscriberProfile, relevantMasterIds]);
+
+  const unreadMessagesCount = useMemo(() => {
+    if (!userId) return 0;
+    let count = 0;
+    chats.forEach(chat => {
+      const isMasterUser = chat.masterId === userId || relevantMasterIds.includes(chat.masterId);
+      const isSubscriberUser = chat.subscriberId === userId;
+      if (isMasterUser || isSubscriberUser) {
+        count += chat.unreadCount || 0;
+      }
+    });
+    return count;
+  }, [chats, userId, relevantMasterIds]);
+
+  const loadMessages = useCallback((masterId: string, subscriberId: string) => {
+    console.log('[Chat] Loading messages for master:', masterId, 'subscriber:', subscriberId);
+
+    if (messagesUnsubRef.current) {
+      messagesUnsubRef.current();
+      messagesUnsubRef.current = null;
+    }
+
+    setIsLoadingMessages(true);
+    setMessages([]);
+
+    try {
+      const q = query(
+        collection(firestore, 'messages'),
+        where('masterId', '==', masterId),
+        where('subscriberId', '==', subscriberId),
+        orderBy('createdAt', 'asc'),
+        limit(500)
+      );
+
+      const unsubscribe = onSnapshot(
+        q,
+        (snapshot) => {
+          const docs: ChatMessage[] = [];
+          snapshot.docs.forEach((d) => {
+            const data = d.data();
+            const createdAt = data.createdAt instanceof Timestamp
+              ? data.createdAt.toMillis()
+              : (typeof data.createdAt === 'number' ? data.createdAt : Date.now());
+            docs.push({
+              id: d.id,
+              masterId: typeof data.masterId === 'string' ? data.masterId : '',
+              subscriberId: typeof data.subscriberId === 'string' ? data.subscriberId : '',
+              text: typeof data.text === 'string' ? data.text : '',
+              senderId: typeof data.senderId === 'string' ? data.senderId : '',
+              senderName: typeof data.senderName === 'string' ? data.senderName : '',
+              createdAt,
+              isRead: typeof data.isRead === 'boolean' ? data.isRead : false,
+            });
+          });
+
+          const newIds = new Set(docs.map(d => d.id));
+          const prevIds = prevMessageIdsRef.current;
+          const freshMessages = docs.filter(d =>
+            !prevIds.has(d.id) && d.senderId !== userId
+          );
+
+          if (prevIds.size > 0 && freshMessages.length > 0 && Platform.OS !== 'web') {
+            for (const m of freshMessages.slice(0, 3)) {
+              Notifications.scheduleNotificationAsync({
+                content: {
+                  title: `${m.senderName || 'Сообщение'}`,
+                  body: m.text.substring(0, 100),
+                  data: { type: 'chat', masterId: m.masterId, subscriberId: m.subscriberId },
+                },
+                trigger: null,
+              }).catch((err) => {
+                console.log('[Chat] Notification error:', err);
+              });
+            }
+          }
+
+          prevMessageIdsRef.current = newIds;
+          console.log('[Chat] Messages snapshot received:', docs.length);
+          setMessages(docs);
+          setIsLoadingMessages(false);
+        },
+        (error) => {
+          console.log('[Chat] Messages subscription error:', error?.message);
+          setIsLoadingMessages(false);
+        }
+      );
+
+      messagesUnsubRef.current = unsubscribe;
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.log('[Chat] loadMessages error:', msg);
+      setIsLoadingMessages(false);
+    }
+  }, [userId]);
+
+  const sendMessage = useCallback(async (masterId: string, subscriberId: string, text: string) => {
+    if (!userId) {
+      Alert.alert('Ошибка', 'Авторизация не завершена.');
+      return;
+    }
+
+    setIsSending(true);
+    try {
+      const resolvedName = displayName || userEmail || 'Аноним';
+      const isMaster = !isSubscriberProfile;
+
+      console.log('[Chat] Sending message:', { masterId, subscriberId, senderId: userId, senderName: resolvedName });
+
+      await addDoc(collection(firestore, 'messages'), {
+        masterId,
+        subscriberId,
+        text,
+        senderId: userId,
+        senderName: resolvedName,
+        createdAt: serverTimestamp(),
+        isRead: false,
+      });
+
+      const chatDocId = getChatDocId(masterId, subscriberId);
+      const chatRef = doc(firestore, 'chats', chatDocId);
+      const chatSnap = await getDoc(chatRef);
+
+      const activeSub = subscriptions.find(s => s.masterId === masterId);
+
+      if (chatSnap.exists()) {
+        await updateDoc(chatRef, {
+          lastMessage: text,
+          lastMessageTime: serverTimestamp(),
+          unreadCount: (chatSnap.data().unreadCount || 0) + 1,
+          ...(isMaster ? { masterName: resolvedName } : { subscriberName: resolvedName }),
+        });
+      } else {
+        await setDoc(chatRef, {
+          masterId,
+          subscriberId,
+          masterName: isMaster ? resolvedName : (activeSub?.name || 'Мастер'),
+          subscriberName: isMaster ? (activeSub?.name || 'Подписчик') : resolvedName,
+          lastMessage: text,
+          lastMessageTime: serverTimestamp(),
+          unreadCount: 1,
+        });
+      }
+
+      console.log('[Chat] Message sent successfully');
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.log('[Chat] sendMessage error:', msg);
+      Alert.alert('Ошибка', msg || 'Не удалось отправить сообщение');
+    } finally {
+      setIsSending(false);
+    }
+  }, [userId, userEmail, displayName, isSubscriberProfile, subscriptions]);
+
+  const markChatAsRead = useCallback((masterId: string, subscriberId: string) => {
+    if (!userId) return;
+    const chatDocId = getChatDocId(masterId, subscriberId);
+    const chatRef = doc(firestore, 'chats', chatDocId);
+
+    updateDoc(chatRef, { unreadCount: 0 }).catch((err) => {
+      console.log('[Chat] markChatAsRead error:', err?.message);
+    });
+
+    const batch = writeBatch(firestore);
+    const q = query(
+      collection(firestore, 'messages'),
+      where('masterId', '==', masterId),
+      where('subscriberId', '==', subscriberId),
+      where('isRead', '==', false)
+    );
+    getDocs(q).then((snapshot) => {
+      snapshot.docs.forEach((d) => {
+        if (d.data().senderId !== userId) {
+          batch.update(d.ref, { isRead: true });
+        }
+      });
+      return batch.commit();
+    }).catch((err) => {
+      console.log('[Chat] markChatAsRead batch error:', err?.message);
+    });
+  }, [userId]);
+
+  useEffect(() => {
+    return () => {
+      if (messagesUnsubRef.current) {
+        messagesUnsubRef.current();
+        messagesUnsubRef.current = null;
+      }
+    };
+  }, []);
+
+  return useMemo(() => ({
+    chats,
+    messages,
+    loadMessages,
+    sendMessage,
+    markChatAsRead,
+    unreadMessagesCount,
+    isLoadingChats,
+    isLoadingMessages,
+    isSending,
+    userId,
+  }), [chats, messages, loadMessages, sendMessage, markChatAsRead, unreadMessagesCount, isLoadingChats, isLoadingMessages, isSending, userId]);
+});
