@@ -46,7 +46,7 @@ function makeKey(entityType: string, entityId: string): string {
 }
 
 export const [CommentsProvider, useComments] = createContextHook<CommentsContextType>(() => {
-  const { userEmail, masterId: backupMasterId, subscriptions, subscriberEmails } = useBackup();
+  const { userEmail, masterId: backupMasterId, subscriptions, subscriberEmails, firestoreSubscribers } = useBackup();
   const { activeProfileId, isSubscriberProfile } = useProfile();
 
   const [userId, setUserId] = useState<string | null>(null);
@@ -371,7 +371,8 @@ export const [CommentsProvider, useComments] = createContextHook<CommentsContext
     }
 
     if (!isSubscriberProfile) {
-      if (!subscriberEmails || subscriberEmails.length === 0) {
+      const hasSubscribers = (firestoreSubscribers && firestoreSubscribers.length > 0) || (subscriberEmails && subscriberEmails.length > 0);
+      if (!hasSubscribers) {
         Alert.alert('Нет подписчиков', 'Комментарии можно отправлять только когда на вас подписан хотя бы один подписчик.');
         return;
       }
@@ -434,7 +435,7 @@ export const [CommentsProvider, useComments] = createContextHook<CommentsContext
     } finally {
       setIsSending(false);
     }
-  }, [userId, userEmail, displayName, activeMasterId, backupMasterId, isSubscriberProfile, subscriptions, activeProfileId, subscriberEmails]);
+  }, [userId, userEmail, displayName, activeMasterId, backupMasterId, isSubscriberProfile, subscriptions, activeProfileId, subscriberEmails, firestoreSubscribers]);
 
   return useMemo(() => ({
     comments: commentsMap,

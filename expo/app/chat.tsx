@@ -9,7 +9,10 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Keyboard,
+  Animated,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Send } from 'lucide-react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Stack } from 'expo-router';
@@ -131,6 +134,7 @@ const bubbleStyles = StyleSheet.create({
 
 export default function ChatScreen() {
   const colors = useThemeColors();
+  const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const params = useLocalSearchParams<{
     masterId: string;
@@ -151,6 +155,7 @@ export default function ChatScreen() {
   const [text, setText] = useState('');
   const flatListRef = useRef<FlatList>(null);
   const hasScrolledRef = useRef(false);
+  const keyboardHeightRef = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (masterId && subscriberId) {
@@ -176,6 +181,24 @@ export default function ChatScreen() {
       }, 50);
     }
   }, [messages]);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const onShow = Keyboard.addListener(showEvent, () => {
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: true });
+      }, 150);
+    });
+
+    const onHide = Keyboard.addListener(hideEvent, () => {});
+
+    return () => {
+      onShow.remove();
+      onHide.remove();
+    };
+  }, []);
 
   useEffect(() => {
     if (masterId && subscriberId && messages.length > 0) {
@@ -206,7 +229,7 @@ export default function ChatScreen() {
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
     >
       <Stack.Screen options={{ title: partnerName || 'Чат' }} />
@@ -228,6 +251,8 @@ export default function ChatScreen() {
           keyExtractor={keyExtractor}
           contentContainerStyle={styles.messagesList}
           showsVerticalScrollIndicator={false}
+          keyboardDismissMode="interactive"
+          keyboardShouldPersistTaps="handled"
           onContentSizeChange={() => {
             if (hasScrolledRef.current) {
               flatListRef.current?.scrollToEnd({ animated: true });
@@ -236,7 +261,7 @@ export default function ChatScreen() {
         />
       )}
 
-      <View style={styles.inputBar}>
+      <View style={[styles.inputBar, { paddingBottom: Math.max(8, insets.bottom) }]}>
         <TextInput
           style={styles.input}
           value={text}
@@ -246,6 +271,11 @@ export default function ChatScreen() {
           multiline
           maxLength={2000}
           testID="chat-input"
+          onFocus={() => {
+            setTimeout(() => {
+              flatListRef.current?.scrollToEnd({ animated: true });
+            }, 300);
+          }}
         />
         <TouchableOpacity
           style={[

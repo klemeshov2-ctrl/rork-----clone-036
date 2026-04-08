@@ -2152,9 +2152,17 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
     await saveSubscriptions(updated);
     console.log('[Backup] Added subscription:', newSub.id, name, 'masterId:', remoteMasterId);
 
-    if (remoteMasterId && auth.currentUser) {
+    if (remoteMasterId) {
       try {
-        const subscriberUid = auth.currentUser.uid;
+        let currentUser = auth.currentUser;
+        if (!currentUser) {
+          console.log('[Backup] No Firebase user yet, signing in anonymously...');
+          const { signInAnonymously } = await import('firebase/auth');
+          const cred = await signInAnonymously(auth);
+          currentUser = cred.user;
+          console.log('[Backup] Anonymous sign-in complete, uid:', currentUser.uid);
+        }
+        const subscriberUid = currentUser.uid;
         const storedDisplayName = await AsyncStorage.getItem('@user_display_name');
         const subscriberName = storedDisplayName || name || ('Подписчик_' + subscriberUid.slice(0, 6));
         await addDoc(collection(firestore, 'subscriptions'), {
@@ -2164,7 +2172,7 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
           masterUrl,
           createdAt: serverTimestamp(),
         });
-        console.log('[Backup] Created Firestore subscription doc: masterId=', remoteMasterId, 'subscriberId=', subscriberUid);
+        console.log('[Backup] Created Firestore subscription doc: masterId=', remoteMasterId, 'subscriberId=', subscriberUid, 'subscriberName=', subscriberName);
       } catch (firestoreErr: any) {
         console.log('[Backup] Failed to create Firestore subscription doc:', firestoreErr?.message);
       }
