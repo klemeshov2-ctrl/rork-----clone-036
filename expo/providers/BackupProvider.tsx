@@ -58,6 +58,7 @@ import {
   doc,
   setDoc,
   getDoc,
+  getDocs,
   addDoc,
   collection,
   serverTimestamp,
@@ -331,6 +332,50 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
     void runMigration();
   }, [db, isReady]);
 
+  const parseSubscriberDocs = useCallback((snapshot: { docs: Array<{ id: string; data: () => Record<string, unknown> }> }): FirestoreSubscription[] => {
+    const subs: FirestoreSubscription[] = [];
+    snapshot.docs.forEach((d) => {
+      const data = d.data();
+      const createdAt = data.createdAt instanceof Timestamp
+        ? data.createdAt.toMillis()
+        : (typeof data.createdAt === 'number' ? data.createdAt : Date.now());
+      subs.push({
+        id: d.id,
+        masterId: typeof data.masterId === 'string' ? data.masterId : '',
+        subscriberId: typeof data.subscriberId === 'string' ? data.subscriberId : '',
+        subscriberName: typeof data.subscriberName === 'string' ? data.subscriberName : 'Подписчик',
+        masterUrl: typeof data.masterUrl === 'string' ? data.masterUrl : '',
+        createdAt: createdAt as number,
+      });
+    });
+    subs.sort((a, b) => b.createdAt - a.createdAt);
+    return subs;
+  }, []);
+
+  const handleNewSubscribers = useCallback((subs: FirestoreSubscription[]) => {
+    const newIds = new Set(subs.map(s => s.id));
+    const prevIds = prevSubscriberIdsRef.current;
+    if (prevIds.size > 0 && Platform.OS !== 'web') {
+      const freshSubs = subs.filter(s => !prevIds.has(s.id));
+      for (const s of freshSubs.slice(0, 3)) {
+        Notifications.scheduleNotificationAsync({
+          content: {
+            title: 'Новый подписчик',
+            body: `${s.subscriberName} подписался на ваши данные`,
+            data: { type: 'new_subscriber', subscriberId: s.subscriberId },
+          },
+          trigger: null,
+        }).catch((err) => {
+          console.log('[Backup] Subscriber notification error:', err);
+        });
+      }
+    }
+    prevSubscriberIdsRef.current = newIds;
+    setFirestoreSubscribers(subs);
+    setIsLoadingSubscribers(false);
+    console.log('[Backup] Firestore subscribers:', subs.length);
+  }, []);
+
   useEffect(() => {
     if (!masterId && !isMasterEnabled) return;
     const currentMasterId = masterId || auth.currentUser?.uid;
@@ -342,56 +387,29 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
     try {
       const q = query(
         collection(firestore, 'subscriptions'),
-        where('masterId', '==', currentMasterId),
-        orderBy('createdAt', 'desc')
+        where('masterId', '==', currentMasterId)
       );
 
       const unsubscribe = onSnapshot(
         q,
         (snapshot) => {
-          const subs: FirestoreSubscription[] = [];
-          const newIds = new Set<string>();
-          snapshot.docs.forEach((d) => {
-            const data = d.data();
-            const createdAt = data.createdAt instanceof Timestamp
-              ? data.createdAt.toMillis()
-              : (typeof data.createdAt === 'number' ? data.createdAt : Date.now());
-            newIds.add(d.id);
-            subs.push({
-              id: d.id,
-              masterId: typeof data.masterId === 'string' ? data.masterId : '',
-              subscriberId: typeof data.subscriberId === 'string' ? data.subscriberId : '',
-              subscriberName: typeof data.subscriberName === 'string' ? data.subscriberName : 'Подписчик',
-              masterUrl: typeof data.masterUrl === 'string' ? data.masterUrl : '',
-              createdAt,
-            });
-          });
-
-          const prevIds = prevSubscriberIdsRef.current;
-          if (prevIds.size > 0 && Platform.OS !== 'web') {
-            const freshSubs = subs.filter(s => !prevIds.has(s.id));
-            for (const s of freshSubs.slice(0, 3)) {
-              Notifications.scheduleNotificationAsync({
-                content: {
-                  title: 'Новый подписчик',
-                  body: `${s.subscriberName} подписался на ваши данные`,
-                  data: { type: 'new_subscriber', subscriberId: s.subscriberId },
-                },
-                trigger: null,
-              }).catch((err) => {
-                console.log('[Backup] Subscriber notification error:', err);
-              });
-            }
-          }
-          prevSubscriberIdsRef.current = newIds;
-
-          setFirestoreSubscribers(subs);
-          setIsLoadingSubscribers(false);
-          console.log('[Backup] Firestore subscribers:', subs.length);
+          const subs = parseSubscriberDocs(snapshot as unknown as { docs: Array<{ id: string; data: () => Record<string, unknown> }> });
+          handleNewSubscribers(subs);
         },
-        (error) => {
-          console.log('[Backup] Firestore subscribers listener error:', error?.message);
-          setIsLoadingSubscribers(false);
+        async (error) => {
+          console.log('[Backup] Firestore subscribers onSnapshot error:', error?.message, '- trying getDocs fallback');
+          try {
+            const fallbackQ = query(
+              collection(firestore, 'subscriptions'),
+              where('masterId', '==', currentMasterId)
+            );
+            const snapshot = await getDocs(fallbackQ);
+            const subs = parseSubscriberDocs(snapshot as unknown as { docs: Array<{ id: string; data: () => Record<string, unknown> }> });
+            handleNewSubscribers(subs);
+          } catch (fallbackErr: any) {
+            console.log('[Backup] Firestore subscribers getDocs fallback error:', fallbackErr?.message);
+            setIsLoadingSubscribers(false);
+          }
         }
       );
 
@@ -400,7 +418,7 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
       console.log('[Backup] Firestore subscribers listener setup error:', e?.message);
       setIsLoadingSubscribers(false);
     }
-  }, [masterId, isMasterEnabled]);
+  }, [masterId, isMasterEnabled, parseSubscriberDocs, handleNewSubscribers]);
 
   const refreshAllProviders = useCallback(async () => {
     console.log('[Backup] Refreshing all providers after restore...');
@@ -2153,35 +2171,64 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
     console.log('[Backup] Added subscription:', newSub.id, name, 'masterId:', remoteMasterId);
 
     if (remoteMasterId) {
-      try {
-        let currentUser = auth.currentUser;
-        if (!currentUser) {
-          console.log('[Backup] No Firebase user yet, signing in anonymously...');
-          const { signInAnonymously } = await import('firebase/auth');
-          const cred = await signInAnonymously(auth);
-          currentUser = cred.user;
-          console.log('[Backup] Anonymous sign-in complete, uid:', currentUser.uid);
-        }
-        const subscriberUid = currentUser.uid;
-        const storedDisplayName = await AsyncStorage.getItem('@user_display_name');
-        const subscriberName = storedDisplayName || name || ('Подписчик_' + subscriberUid.slice(0, 6));
-        await addDoc(collection(firestore, 'subscriptions'), {
-          masterId: remoteMasterId,
-          subscriberId: subscriberUid,
-          subscriberName,
-          masterUrl,
-          createdAt: serverTimestamp(),
-        });
-        console.log('[Backup] Created Firestore subscription doc: masterId=', remoteMasterId, 'subscriberId=', subscriberUid, 'subscriberName=', subscriberName);
-      } catch (firestoreErr: any) {
-        const errMsg = firestoreErr?.message || '';
-        console.log('[Backup] Failed to create Firestore subscription doc:', errMsg);
-        if (errMsg.includes('permission') || errMsg.includes('Permission')) {
-          console.log('[Backup] Firestore permissions error - master needs to configure Firestore Rules');
-          Alert.alert(
-            'Внимание',
-            'Подписка добавлена, но уведомление мастеру не отправлено из-за ограничений доступа Firebase. Попросите мастера настроить правила Firestore для коллекций: subscriptions, comments, messages, chats.\n\nПравила должны разрешать чтение и запись для авторизованных пользователей (allow read, write: if request.auth != null).'
+      let firestoreRegistered = false;
+      const MAX_RETRIES = 3;
+      for (let attempt = 1; attempt <= MAX_RETRIES && !firestoreRegistered; attempt++) {
+        try {
+          let currentUser = auth.currentUser;
+          if (!currentUser) {
+            console.log('[Backup] No Firebase user yet, signing in anonymously... (attempt', attempt, ')');
+            const { signInAnonymously } = await import('firebase/auth');
+            const cred = await signInAnonymously(auth);
+            currentUser = cred.user;
+            console.log('[Backup] Anonymous sign-in complete, uid:', currentUser.uid);
+          }
+          const subscriberUid = currentUser.uid;
+          const storedDisplayName = await AsyncStorage.getItem('@user_display_name');
+          const subscriberName = storedDisplayName || name || ('Подписчик_' + subscriberUid.slice(0, 6));
+
+          const existingQuery = query(
+            collection(firestore, 'subscriptions'),
+            where('masterId', '==', remoteMasterId),
+            where('subscriberId', '==', subscriberUid)
           );
+          const existingSnap = await getDocs(existingQuery);
+          if (!existingSnap.empty) {
+            console.log('[Backup] Subscriber already registered in Firestore, skipping duplicate');
+            firestoreRegistered = true;
+            break;
+          }
+
+          await addDoc(collection(firestore, 'subscriptions'), {
+            masterId: remoteMasterId,
+            subscriberId: subscriberUid,
+            subscriberName,
+            masterUrl,
+            createdAt: serverTimestamp(),
+          });
+          firestoreRegistered = true;
+          console.log('[Backup] Created Firestore subscription doc: masterId=', remoteMasterId, 'subscriberId=', subscriberUid, 'subscriberName=', subscriberName);
+        } catch (firestoreErr: any) {
+          const errMsg = firestoreErr?.message || '';
+          console.log('[Backup] Firestore subscription attempt', attempt, 'failed:', errMsg);
+          if (errMsg.includes('permission') || errMsg.includes('Permission')) {
+            console.log('[Backup] Firestore permissions error - master needs to configure Firestore Rules');
+            Alert.alert(
+              'Внимание',
+              'Подписка добавлена, но уведомление мастеру не отправлено из-за ограничений доступа Firebase. Попросите мастера настроить правила Firestore для коллекций: subscriptions, comments, messages, chats.\n\nПравила должны разрешать чтение и запись для авторизованных пользователей (allow read, write: if request.auth != null).'
+            );
+            break;
+          }
+          if (attempt < MAX_RETRIES) {
+            console.log('[Backup] Retrying Firestore registration in', attempt * 1000, 'ms...');
+            await new Promise(r => setTimeout(r, attempt * 1000));
+          } else {
+            console.log('[Backup] All Firestore registration attempts failed');
+            Alert.alert(
+              'Внимание',
+              'Подписка добавлена локально, но регистрация у мастера не удалась. Попробуйте позже повторно добавить подписку или проверьте интернет-соединение.'
+            );
+          }
         }
       }
     }
