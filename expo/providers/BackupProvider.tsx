@@ -61,7 +61,13 @@ import {
   addDoc,
   collection,
   serverTimestamp,
+  query,
+  where,
+  onSnapshot,
+  orderBy,
+  Timestamp,
 } from 'firebase/firestore';
+import * as Notifications from 'expo-notifications';
 import {
   isRemoteUrl,
   generateRemoteFileName,
@@ -124,7 +130,7 @@ export const SYNC_INTERVALS = {
 
 export type SyncIntervalValue = typeof SYNC_INTERVALS[keyof typeof SYNC_INTERVALS];
 
-import type { MasterSubscription, SyncIntervalKey } from '@/types';
+import type { MasterSubscription, SyncIntervalKey, FirestoreSubscription } from '@/types';
 
 const INTERVAL_KEY_TO_MS: Record<SyncIntervalKey, number> = {
   hourly: SYNC_INTERVALS.HOURLY,
@@ -209,6 +215,9 @@ interface BackupContextType {
   sendInvitationToSubscriber: (email: string) => Promise<void>;
   isGrantingAccess: boolean;
   isSendingInvitation: boolean;
+
+  firestoreSubscribers: FirestoreSubscription[];
+  isLoadingSubscribers: boolean;
 }
 
 export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(() => {
@@ -258,6 +267,10 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
 
   const [masterId, setMasterId] = useState<string | null>(null);
   const [yandexUserId, setYandexUserId] = useState<string | null>(null);
+
+  const [firestoreSubscribers, setFirestoreSubscribers] = useState<FirestoreSubscription[]>([]);
+  const [isLoadingSubscribers, setIsLoadingSubscribers] = useState(false);
+  const prevSubscriberIdsRef = useRef<Set<string>>(new Set());
 
   const { activeProfileId, refreshProfiles } = useProfile();
 
@@ -317,6 +330,77 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
     };
     void runMigration();
   }, [db, isReady]);
+
+  useEffect(() => {
+    if (!masterId && !isMasterEnabled) return;
+    const currentMasterId = masterId || auth.currentUser?.uid;
+    if (!currentMasterId) return;
+
+    console.log('[Backup] Setting up Firestore subscribers listener for masterId:', currentMasterId);
+    setIsLoadingSubscribers(true);
+
+    try {
+      const q = query(
+        collection(firestore, 'subscriptions'),
+        where('masterId', '==', currentMasterId),
+        orderBy('createdAt', 'desc')
+      );
+
+      const unsubscribe = onSnapshot(
+        q,
+        (snapshot) => {
+          const subs: FirestoreSubscription[] = [];
+          const newIds = new Set<string>();
+          snapshot.docs.forEach((d) => {
+            const data = d.data();
+            const createdAt = data.createdAt instanceof Timestamp
+              ? data.createdAt.toMillis()
+              : (typeof data.createdAt === 'number' ? data.createdAt : Date.now());
+            newIds.add(d.id);
+            subs.push({
+              id: d.id,
+              masterId: typeof data.masterId === 'string' ? data.masterId : '',
+              subscriberId: typeof data.subscriberId === 'string' ? data.subscriberId : '',
+              subscriberName: typeof data.subscriberName === 'string' ? data.subscriberName : 'Подписчик',
+              masterUrl: typeof data.masterUrl === 'string' ? data.masterUrl : '',
+              createdAt,
+            });
+          });
+
+          const prevIds = prevSubscriberIdsRef.current;
+          if (prevIds.size > 0 && Platform.OS !== 'web') {
+            const freshSubs = subs.filter(s => !prevIds.has(s.id));
+            for (const s of freshSubs.slice(0, 3)) {
+              Notifications.scheduleNotificationAsync({
+                content: {
+                  title: 'Новый подписчик',
+                  body: `${s.subscriberName} подписался на ваши данные`,
+                  data: { type: 'new_subscriber', subscriberId: s.subscriberId },
+                },
+                trigger: null,
+              }).catch((err) => {
+                console.log('[Backup] Subscriber notification error:', err);
+              });
+            }
+          }
+          prevSubscriberIdsRef.current = newIds;
+
+          setFirestoreSubscribers(subs);
+          setIsLoadingSubscribers(false);
+          console.log('[Backup] Firestore subscribers:', subs.length);
+        },
+        (error) => {
+          console.log('[Backup] Firestore subscribers listener error:', error?.message);
+          setIsLoadingSubscribers(false);
+        }
+      );
+
+      return () => unsubscribe();
+    } catch (e: any) {
+      console.log('[Backup] Firestore subscribers listener setup error:', e?.message);
+      setIsLoadingSubscribers(false);
+    }
+  }, [masterId, isMasterEnabled]);
 
   const refreshAllProviders = useCallback(async () => {
     console.log('[Backup] Refreshing all providers after restore...');
@@ -2519,5 +2603,8 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
     sendInvitationToSubscriber,
     isGrantingAccess,
     isSendingInvitation,
-  }), [accessToken, userEmail, lastBackupDate, autoBackupEnabled, isCreatingBackup, isRestoring, isLoadingBackups, backupsList, signIn, signOut, createBackup, restoreBackup, loadBackupsList, toggleAutoBackup, isInitializing, isMasterEnabled, masterInterval, masterPublicUrl, lastMasterPublish, isPublishing, toggleMasterMode, setMasterInterval, publishBackup, subscriptionUrl, isAutoSyncEnabled, syncInterval, lastSyncCheck, isSyncing, subscribeToMaster, unsubscribe, setSyncIntervalFn, toggleAutoSync, manualSync, subscriptions, addSubscription, removeSubscription, renameSubscription, updateSubscriptionAutoSync, updateSubscriptionInterval, syncSubscription, isSyncingSubscription, masterAutoSyncEnabled, masterAutoSyncInterval, lastMasterSync, isMasterSyncing, toggleMasterAutoSync, setMasterAutoSyncInterval, masterSyncNow, switchAccount, resetMasterSettings, syncProgress, masterId, yandexUserId, activeProfileId, subscriberEmails, addSubscriberEmail, removeSubscriberEmail, grantAccessToSubscriber, sendInvitationToSubscriber, isGrantingAccess, isSendingInvitation]);
+
+    firestoreSubscribers,
+    isLoadingSubscribers,
+  }), [accessToken, userEmail, lastBackupDate, autoBackupEnabled, isCreatingBackup, isRestoring, isLoadingBackups, backupsList, signIn, signOut, createBackup, restoreBackup, loadBackupsList, toggleAutoBackup, isInitializing, isMasterEnabled, masterInterval, masterPublicUrl, lastMasterPublish, isPublishing, toggleMasterMode, setMasterInterval, publishBackup, subscriptionUrl, isAutoSyncEnabled, syncInterval, lastSyncCheck, isSyncing, subscribeToMaster, unsubscribe, setSyncIntervalFn, toggleAutoSync, manualSync, subscriptions, addSubscription, removeSubscription, renameSubscription, updateSubscriptionAutoSync, updateSubscriptionInterval, syncSubscription, isSyncingSubscription, masterAutoSyncEnabled, masterAutoSyncInterval, lastMasterSync, isMasterSyncing, toggleMasterAutoSync, setMasterAutoSyncInterval, masterSyncNow, switchAccount, resetMasterSettings, syncProgress, masterId, yandexUserId, activeProfileId, subscriberEmails, addSubscriberEmail, removeSubscriberEmail, grantAccessToSubscriber, sendInvitationToSubscriber, isGrantingAccess, isSendingInvitation, firestoreSubscribers, isLoadingSubscribers]);
 });

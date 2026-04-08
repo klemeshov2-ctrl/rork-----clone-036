@@ -31,6 +31,9 @@ import { CameraView, useCameraPermissions, BarcodeScanningResult } from 'expo-ca
 import { useThemeColors } from '@/providers/ThemeProvider';
 import { ThemeColors } from '@/constants/colors';
 import { useBackup } from '@/providers/BackupProvider';
+import { useComments } from '@/providers/CommentsProvider';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { User } from 'lucide-react-native';
 import type { MasterSubscription, SyncIntervalKey } from '@/types';
 
 function formatTimestamp(ts: number | null): string {
@@ -73,8 +76,14 @@ export default function SyncSubscriberScreen() {
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [newSubName, setNewSubName] = useState('');
   const [newSubUrl, setNewSubUrl] = useState('');
+  const [subscriberDisplayName, setSubscriberDisplayName] = useState('');
   const [renameValue, setRenameValue] = useState('');
   const [isAdding, setIsAdding] = useState(false);
+  const { displayName, setDisplayName } = useComments();
+
+  React.useEffect(() => {
+    if (displayName) setSubscriberDisplayName(displayName);
+  }, [displayName]);
 
   const [showScanner, setShowScanner] = useState(false);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
@@ -117,6 +126,11 @@ export default function SyncSubscriberScreen() {
   const handleAdd = useCallback(async () => {
     const name = newSubName.trim();
     const url = newSubUrl.trim();
+    const myName = subscriberDisplayName.trim();
+    if (!myName) {
+      Alert.alert('Ошибка', 'Введите ваше имя, чтобы мастер мог вас идентифицировать');
+      return;
+    }
     if (!name) {
       Alert.alert('Ошибка', 'Введите название подписки');
       return;
@@ -127,18 +141,21 @@ export default function SyncSubscriberScreen() {
     }
     setIsAdding(true);
     try {
+      await setDisplayName(myName);
+      await AsyncStorage.setItem('@user_display_name', myName);
       const sub = await addSubscription(name, url);
       setActiveTabId(sub.id);
       setShowAddModal(false);
       setNewSubName('');
       setNewSubUrl('');
-      Alert.alert('Готово', `Подписка "${name}" добавлена`);
+      setSubscriberDisplayName(myName);
+      Alert.alert('Готово', `Подписка "${name}" добавлена. Вы зарегистрированы как "${myName}".`);
     } catch (e: any) {
       Alert.alert('Ошибка', e?.message || 'Не удалось добавить подписку');
     } finally {
       setIsAdding(false);
     }
-  }, [newSubName, newSubUrl, addSubscription]);
+  }, [newSubName, newSubUrl, subscriberDisplayName, addSubscription, setDisplayName]);
 
   const handleRemove = useCallback((sub: MasterSubscription) => {
     Alert.alert(
@@ -376,7 +393,16 @@ export default function SyncSubscriberScreen() {
                 <X size={24} color={colors.text} />
               </TouchableOpacity>
             </View>
-            <Text style={styles.inputLabel}>Название</Text>
+            <Text style={styles.inputLabel}>Ваше имя (видно мастеру)</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={subscriberDisplayName}
+              onChangeText={setSubscriberDisplayName}
+              placeholder="Как вас зовут?"
+              placeholderTextColor={colors.textMuted}
+              testID="subscriber-display-name"
+            />
+            <Text style={styles.inputLabel}>Название подписки</Text>
             <TextInput
               style={styles.modalInput}
               value={newSubName}

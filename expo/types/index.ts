@@ -190,6 +190,7 @@ export interface Comment {
 }
 
 export interface FirestoreSubscription {
+  id: string;
   masterId: string;
   subscriberId: string;
   subscriberName: string;

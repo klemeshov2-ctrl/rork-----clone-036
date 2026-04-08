@@ -77,6 +77,8 @@ export default function SyncMasterScreen() {
     removeSubscriberEmail,
     sendInvitationToSubscriber,
     isSendingInvitation,
+    firestoreSubscribers,
+    isLoadingSubscribers,
   } = useBackup();
 
   const [showQr, setShowQr] = useState(false);
@@ -376,13 +378,57 @@ export default function SyncMasterScreen() {
             </View>
 
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Подписчики (приглашения к комментариям)</Text>
+              <Text style={styles.sectionTitle}>Подписчики ({firestoreSubscribers.length})</Text>
+              <View style={styles.subscribersCard}>
+                {isLoadingSubscribers ? (
+                  <View style={styles.subscribersEmpty}>
+                    <ActivityIndicator size="small" color={colors.primary} />
+                    <Text style={styles.subscribersEmptyText}>Загрузка...</Text>
+                  </View>
+                ) : firestoreSubscribers.length === 0 ? (
+                  <View style={styles.subscribersEmpty}>
+                    <Users size={24} color={colors.textMuted} />
+                    <Text style={styles.subscribersEmptyText}>Нет подписчиков</Text>
+                    <Text style={styles.subscribersEmptyHint}>Когда кто-то добавит вашу ссылку, он автоматически появится здесь</Text>
+                  </View>
+                ) : (
+                  firestoreSubscribers.map((sub) => {
+                    const joinDate = new Date(sub.createdAt);
+                    const dateStr = joinDate.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                    return (
+                      <View key={sub.id} style={styles.subscriberRow}>
+                        <View style={styles.subscriberInfo}>
+                          <View style={[styles.subscriberAvatar, { backgroundColor: colors.success + '20' }]}>
+                            <Text style={[styles.subscriberAvatarText, { color: colors.success }]}>
+                              {(sub.subscriberName[0] || '?').toUpperCase()}
+                            </Text>
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.subscriberEmail} numberOfLines={1}>{sub.subscriberName}</Text>
+                            <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 1 }}>
+                              Подписан с {dateStr}
+                            </Text>
+                          </View>
+                        </View>
+                        <View style={[styles.subscriberStatusBadge, { backgroundColor: colors.success + '15' }]}>
+                          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.success }} />
+                          <Text style={{ fontSize: 11, fontWeight: '600' as const, color: colors.success }}>Активен</Text>
+                        </View>
+                      </View>
+                    );
+                  })
+                )}
+              </View>
+            </View>
+
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Приглашения к комментариям (email)</Text>
               <View style={styles.subscribersCard}>
                 {subscriberEmails.length === 0 ? (
                   <View style={styles.subscribersEmpty}>
-                    <Users size={24} color={colors.textMuted} />
-                    <Text style={styles.subscribersEmptyText}>Нет добавленных подписчиков</Text>
-                    <Text style={styles.subscribersEmptyHint}>Добавьте email подписчика и отправьте приглашение для доступа к комментариям</Text>
+                    <Mail size={24} color={colors.textMuted} />
+                    <Text style={styles.subscribersEmptyText}>Нет приглашений</Text>
+                    <Text style={styles.subscribersEmptyHint}>Добавьте email подписчика для доступа к папке комментариев на Яндекс.Диске</Text>
                   </View>
                 ) : (
                   subscriberEmails.map((email) => (
@@ -424,7 +470,7 @@ export default function SyncMasterScreen() {
                 onPress={() => setShowAddEmailModal(true)}
               >
                 <UserPlus size={18} color={colors.primary} />
-                <Text style={styles.addEmailButtonText}>Добавить подписчика</Text>
+                <Text style={styles.addEmailButtonText}>Добавить по email</Text>
               </TouchableOpacity>
             </View>
 
@@ -810,6 +856,14 @@ function createStyles(colors: ThemeColors) {
       flexDirection: 'row' as const,
       alignItems: 'center' as const,
       gap: 6,
+    },
+    subscriberStatusBadge: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: 4,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 8,
     },
     grantBtn: {
       flexDirection: 'row' as const,
