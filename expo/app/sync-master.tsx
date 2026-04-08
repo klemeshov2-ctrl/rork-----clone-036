@@ -25,7 +25,6 @@ import {
   UserPlus,
   Trash2,
   X,
-  Mail,
 } from 'lucide-react-native';
 import { useThemeColors } from '@/providers/ThemeProvider';
 import { ThemeColors } from '@/constants/colors';
@@ -72,19 +71,12 @@ export default function SyncMasterScreen() {
     toggleMasterAutoSync,
     setMasterAutoSyncInterval,
     masterSyncNow,
-    subscriberEmails,
-    addSubscriberEmail,
-    removeSubscriberEmail,
-    sendInvitationToSubscriber,
-    isSendingInvitation,
     firestoreSubscribers,
     isLoadingSubscribers,
   } = useBackup();
 
   const [showQr, setShowQr] = useState(false);
-  const [showAddEmailModal, setShowAddEmailModal] = useState(false);
-  const [newEmail, setNewEmail] = useState('');
-  const [invitingEmail, setInvitingEmail] = useState<string | null>(null);
+
 
   const handleToggleMaster = async (value: boolean) => {
     if (value && !isConnected) {
@@ -149,37 +141,6 @@ export default function SyncMasterScreen() {
       await Clipboard.setStringAsync(masterPublicUrl);
     }
     Alert.alert('Скопировано', 'Ссылка скопирована в буфер обмена');
-  };
-
-  const handleAddEmail = async () => {
-    const email = newEmail.trim().toLowerCase();
-    if (!email || !email.includes('@')) {
-      Alert.alert('Ошибка', 'Введите корректный email подписчика');
-      return;
-    }
-    await addSubscriberEmail(email);
-    setNewEmail('');
-    setShowAddEmailModal(false);
-  };
-
-  const handleSendInvitation = async (email: string) => {
-    setInvitingEmail(email);
-    try {
-      await sendInvitationToSubscriber(email);
-    } finally {
-      setInvitingEmail(null);
-    }
-  };
-
-  const handleRemoveEmail = (email: string) => {
-    Alert.alert(
-      'Удалить подписчика',
-      `Удалить ${email} из списка? Доступ к папке комментариев не будет отозван.`,
-      [
-        { text: 'Отмена', style: 'cancel' },
-        { text: 'Удалить', style: 'destructive', onPress: () => removeSubscriberEmail(email) },
-      ]
-    );
   };
 
   const qrUrl = masterPublicUrl
@@ -422,59 +383,6 @@ export default function SyncMasterScreen() {
             </View>
 
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Приглашения к комментариям (email)</Text>
-              <View style={styles.subscribersCard}>
-                {subscriberEmails.length === 0 ? (
-                  <View style={styles.subscribersEmpty}>
-                    <Mail size={24} color={colors.textMuted} />
-                    <Text style={styles.subscribersEmptyText}>Нет приглашений</Text>
-                    <Text style={styles.subscribersEmptyHint}>Добавьте email подписчика для доступа к папке комментариев на Яндекс.Диске</Text>
-                  </View>
-                ) : (
-                  subscriberEmails.map((email) => (
-                    <View key={email} style={styles.subscriberRow}>
-                      <View style={styles.subscriberInfo}>
-                        <View style={styles.subscriberAvatar}>
-                          <Text style={styles.subscriberAvatarText}>
-                            {(email[0] || '?').toUpperCase()}
-                          </Text>
-                        </View>
-                        <Text style={styles.subscriberEmail} numberOfLines={1}>{email}</Text>
-                      </View>
-                      <View style={styles.subscriberActions}>
-                        <TouchableOpacity
-                          style={styles.inviteBtn}
-                          onPress={() => handleSendInvitation(email)}
-                          disabled={isSendingInvitation || invitingEmail === email}
-                        >
-                          {invitingEmail === email ? (
-                            <ActivityIndicator size="small" color={colors.info} />
-                          ) : (
-                            <Mail size={16} color={colors.info} />
-                          )}
-                          <Text style={styles.inviteBtnText}>Пригласить</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={styles.removeEmailBtn}
-                          onPress={() => handleRemoveEmail(email)}
-                        >
-                          <Trash2 size={16} color={colors.error} />
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  ))
-                )}
-              </View>
-              <TouchableOpacity
-                style={styles.addEmailButton}
-                onPress={() => setShowAddEmailModal(true)}
-              >
-                <UserPlus size={18} color={colors.primary} />
-                <Text style={styles.addEmailButtonText}>Добавить по email</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.section}>
               <Text style={styles.sectionTitle}>Интервал автопубликации</Text>
               <View style={styles.intervalCard}>
                 {INTERVAL_OPTIONS.map((option) => (
@@ -508,36 +416,6 @@ export default function SyncMasterScreen() {
             </View>
           </>
         )}
-
-        <Modal visible={showAddEmailModal} animationType="fade" transparent>
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Добавить подписчика</Text>
-                <TouchableOpacity onPress={() => setShowAddEmailModal(false)}>
-                  <X size={24} color={colors.text} />
-                </TouchableOpacity>
-              </View>
-              <Text style={styles.modalHint}>
-                Введите email Яндекс-аккаунта подписчика. После добавления нажмите «Пригласить», чтобы отправить приглашение. Подписчик должен принять его в Яндекс.Диске.
-              </Text>
-              <TextInput
-                style={styles.modalInput}
-                value={newEmail}
-                onChangeText={setNewEmail}
-                placeholder="user@yandex.ru"
-                placeholderTextColor={colors.textMuted}
-                autoCapitalize="none"
-                autoCorrect={false}
-                keyboardType="email-address"
-              />
-              <TouchableOpacity style={styles.modalConfirmBtn} onPress={handleAddEmail}>
-                <UserPlus size={18} color="#FFFFFF" />
-                <Text style={styles.modalConfirmText}>Добавить</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </Modal>
 
         {!isConnected && (
           <View style={styles.section}>
@@ -852,11 +730,7 @@ function createStyles(colors: ThemeColors) {
       color: colors.text,
       flex: 1,
     },
-    subscriberActions: {
-      flexDirection: 'row' as const,
-      alignItems: 'center' as const,
-      gap: 6,
-    },
+
     subscriberStatusBadge: {
       flexDirection: 'row' as const,
       alignItems: 'center' as const,
@@ -865,112 +739,6 @@ function createStyles(colors: ThemeColors) {
       paddingVertical: 4,
       borderRadius: 8,
     },
-    grantBtn: {
-      flexDirection: 'row' as const,
-      alignItems: 'center' as const,
-      gap: 4,
-      backgroundColor: 'rgba(76, 175, 80, 0.12)',
-      paddingVertical: 6,
-      paddingHorizontal: 10,
-      borderRadius: 8,
-    },
-    grantBtnText: {
-      fontSize: 12,
-      fontWeight: '600' as const,
-      color: colors.success,
-    },
-    inviteBtn: {
-      flexDirection: 'row' as const,
-      alignItems: 'center' as const,
-      gap: 4,
-      backgroundColor: 'rgba(33, 150, 243, 0.12)',
-      paddingVertical: 6,
-      paddingHorizontal: 10,
-      borderRadius: 8,
-    },
-    inviteBtnText: {
-      fontSize: 12,
-      fontWeight: '600' as const,
-      color: colors.info,
-    },
-    removeEmailBtn: {
-      width: 32,
-      height: 32,
-      borderRadius: 8,
-      backgroundColor: 'rgba(244, 67, 54, 0.1)',
-      alignItems: 'center' as const,
-      justifyContent: 'center' as const,
-    },
-    addEmailButton: {
-      flexDirection: 'row' as const,
-      alignItems: 'center' as const,
-      justifyContent: 'center' as const,
-      backgroundColor: colors.primary + '12',
-      borderRadius: 12,
-      paddingVertical: 12,
-      gap: 8,
-      marginTop: 10,
-      borderWidth: 1,
-      borderColor: colors.primary + '25',
-    },
-    addEmailButtonText: {
-      fontSize: 14,
-      fontWeight: '600' as const,
-      color: colors.primary,
-    },
-    modalOverlay: {
-      flex: 1,
-      backgroundColor: 'rgba(0,0,0,0.6)',
-      justifyContent: 'center' as const,
-      paddingHorizontal: 20,
-    },
-    modalContent: {
-      backgroundColor: colors.surface,
-      borderRadius: 18,
-      padding: 24,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    modalHeader: {
-      flexDirection: 'row' as const,
-      justifyContent: 'space-between' as const,
-      alignItems: 'center' as const,
-      marginBottom: 16,
-    },
-    modalTitle: {
-      fontSize: 18,
-      fontWeight: '700' as const,
-      color: colors.text,
-    },
-    modalHint: {
-      fontSize: 13,
-      color: colors.textSecondary,
-      lineHeight: 18,
-      marginBottom: 16,
-    },
-    modalInput: {
-      backgroundColor: colors.surfaceElevated,
-      borderRadius: 10,
-      padding: 14,
-      fontSize: 15,
-      color: colors.text,
-      borderWidth: 1,
-      borderColor: colors.border,
-      marginBottom: 16,
-    },
-    modalConfirmBtn: {
-      flexDirection: 'row' as const,
-      alignItems: 'center' as const,
-      justifyContent: 'center' as const,
-      backgroundColor: colors.primary,
-      borderRadius: 14,
-      paddingVertical: 14,
-      gap: 8,
-    },
-    modalConfirmText: {
-      fontSize: 16,
-      fontWeight: '600' as const,
-      color: '#FFFFFF',
-    },
+
   });
 }
