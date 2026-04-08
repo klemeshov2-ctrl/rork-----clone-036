@@ -370,13 +370,7 @@ export const [CommentsProvider, useComments] = createContextHook<CommentsContext
       return;
     }
 
-    if (!isSubscriberProfile) {
-      const hasSubscribers = (firestoreSubscribers && firestoreSubscribers.length > 0) || (subscriberEmails && subscriberEmails.length > 0);
-      if (!hasSubscribers) {
-        Alert.alert('Нет подписчиков', 'Комментарии можно отправлять только когда на вас подписан хотя бы один подписчик.');
-        return;
-      }
-    }
+
 
     if (isSubscriberProfile) {
       const activeSub = subscriptions.find(s => s.id === activeProfileId);
@@ -425,9 +419,21 @@ export const [CommentsProvider, useComments] = createContextHook<CommentsContext
         commentData.subscriberId = userId;
       }
 
-      await addDoc(collection(firestore, 'comments'), commentData);
-
-      console.log('[Comments] Comment added successfully');
+      try {
+        await addDoc(collection(firestore, 'comments'), commentData);
+        console.log('[Comments] Comment added successfully');
+      } catch (firestoreErr: unknown) {
+        const errMsg = firestoreErr instanceof Error ? firestoreErr.message : String(firestoreErr);
+        console.log('[Comments] Firestore addDoc error:', errMsg);
+        if (errMsg.includes('permission') || errMsg.includes('Permission')) {
+          Alert.alert(
+            'Ошибка доступа',
+            'Нет прав для отправки комментариев. Попросите мастера настроить правила Firebase (Firestore Rules) для коллекции comments.'
+          );
+          return;
+        }
+        throw firestoreErr;
+      }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       console.log('[Comments] addComment error:', msg);

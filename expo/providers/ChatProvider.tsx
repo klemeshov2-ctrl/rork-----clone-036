@@ -339,44 +339,59 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
 
       console.log('[Chat] Sending message:', { masterId, subscriberId, senderId: userId, senderName: resolvedName });
 
-      await addDoc(collection(firestore, 'messages'), {
-        masterId,
-        subscriberId,
-        text,
-        senderId: userId,
-        senderName: resolvedName,
-        createdAt: serverTimestamp(),
-        isRead: false,
-      });
-
-      const chatDocId = getChatDocId(masterId, subscriberId);
-      const chatRef = doc(firestore, 'chats', chatDocId);
-      const chatSnap = await getDoc(chatRef);
-
-      const activeSub = subscriptions.find(s => s.masterId === masterId);
-
-      if (chatSnap.exists()) {
-        const updateData: Record<string, unknown> = {
-          lastMessage: text,
-          lastMessageTime: serverTimestamp(),
-          unreadCount: (chatSnap.data().unreadCount || 0) + 1,
-          ...(isMaster ? { masterName: resolvedName } : { subscriberName: resolvedName }),
-        };
-        if (!chatSnap.data().participants) {
-          updateData.participants = [masterId, subscriberId];
-        }
-        await updateDoc(chatRef, updateData);
-      } else {
-        await setDoc(chatRef, {
+      try {
+        await addDoc(collection(firestore, 'messages'), {
           masterId,
           subscriberId,
-          participants: [masterId, subscriberId],
-          masterName: isMaster ? resolvedName : (activeSub?.name || 'Мастер'),
-          subscriberName: isMaster ? (activeSub?.name || 'Подписчик') : resolvedName,
-          lastMessage: text,
-          lastMessageTime: serverTimestamp(),
-          unreadCount: 1,
+          text,
+          senderId: userId,
+          senderName: resolvedName,
+          createdAt: serverTimestamp(),
+          isRead: false,
         });
+      } catch (msgErr: unknown) {
+        const errMsg = msgErr instanceof Error ? msgErr.message : String(msgErr);
+        console.log('[Chat] Failed to add message doc:', errMsg);
+        if (errMsg.includes('permission') || errMsg.includes('Permission')) {
+          Alert.alert('Ошибка доступа', 'Нет прав для отправки сообщений. Попросите мастера настроить правила Firebase (Firestore Rules) для коллекций messages и chats.');
+          return;
+        }
+        throw msgErr;
+      }
+
+      try {
+        const chatDocId = getChatDocId(masterId, subscriberId);
+        const chatRef = doc(firestore, 'chats', chatDocId);
+        const chatSnap = await getDoc(chatRef);
+
+        const activeSub = subscriptions.find(s => s.masterId === masterId);
+
+        if (chatSnap.exists()) {
+          const updateData: Record<string, unknown> = {
+            lastMessage: text,
+            lastMessageTime: serverTimestamp(),
+            unreadCount: (chatSnap.data().unreadCount || 0) + 1,
+            ...(isMaster ? { masterName: resolvedName } : { subscriberName: resolvedName }),
+          };
+          if (!chatSnap.data().participants) {
+            updateData.participants = [masterId, subscriberId];
+          }
+          await updateDoc(chatRef, updateData);
+        } else {
+          await setDoc(chatRef, {
+            masterId,
+            subscriberId,
+            participants: [masterId, subscriberId],
+            masterName: isMaster ? resolvedName : (activeSub?.name || 'Мастер'),
+            subscriberName: isMaster ? (activeSub?.name || 'Подписчик') : resolvedName,
+            lastMessage: text,
+            lastMessageTime: serverTimestamp(),
+            unreadCount: 1,
+          });
+        }
+      } catch (chatErr: unknown) {
+        const errMsg = chatErr instanceof Error ? chatErr.message : String(chatErr);
+        console.log('[Chat] Failed to update chat doc (non-critical):', errMsg);
       }
 
       console.log('[Chat] Message sent successfully');

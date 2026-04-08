@@ -2174,7 +2174,15 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
         });
         console.log('[Backup] Created Firestore subscription doc: masterId=', remoteMasterId, 'subscriberId=', subscriberUid, 'subscriberName=', subscriberName);
       } catch (firestoreErr: any) {
-        console.log('[Backup] Failed to create Firestore subscription doc:', firestoreErr?.message);
+        const errMsg = firestoreErr?.message || '';
+        console.log('[Backup] Failed to create Firestore subscription doc:', errMsg);
+        if (errMsg.includes('permission') || errMsg.includes('Permission')) {
+          console.log('[Backup] Firestore permissions error - master needs to configure Firestore Rules');
+          Alert.alert(
+            'Внимание',
+            'Подписка добавлена, но уведомление мастеру не отправлено из-за ограничений доступа Firebase. Попросите мастера настроить правила Firestore для коллекций: subscriptions, comments, messages, chats.\n\nПравила должны разрешать чтение и запись для авторизованных пользователей (allow read, write: if request.auth != null).'
+          );
+        }
       }
     }
 
