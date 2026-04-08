@@ -407,7 +407,7 @@ export default function SyncSubscriberScreen() {
               style={styles.modalInput}
               value={newSubName}
               onChangeText={setNewSubName}
-              placeholder="Например: Офис, Склад..."
+              placeholder="Например: Имя мастера"
               placeholderTextColor={colors.textMuted}
             />
             <Text style={styles.inputLabel}>Ссылка от мастера</Text>
