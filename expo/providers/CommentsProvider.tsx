@@ -46,7 +46,7 @@ function makeKey(entityType: string, entityId: string): string {
 }
 
 export const [CommentsProvider, useComments] = createContextHook<CommentsContextType>(() => {
-  const { userEmail, masterId: backupMasterId, subscriptions } = useBackup();
+  const { userEmail, masterId: backupMasterId, subscriptions, subscriberEmails } = useBackup();
   const { activeProfileId, isSubscriberProfile } = useProfile();
 
   const [userId, setUserId] = useState<string | null>(null);
@@ -370,6 +370,13 @@ export const [CommentsProvider, useComments] = createContextHook<CommentsContext
       return;
     }
 
+    if (!isSubscriberProfile) {
+      if (!subscriberEmails || subscriberEmails.length === 0) {
+        Alert.alert('Нет подписчиков', 'Комментарии можно отправлять только когда на вас подписан хотя бы один подписчик.');
+        return;
+      }
+    }
+
     if (isSubscriberProfile) {
       const activeSub = subscriptions.find(s => s.id === activeProfileId);
       if (!activeSub) {
@@ -427,7 +434,7 @@ export const [CommentsProvider, useComments] = createContextHook<CommentsContext
     } finally {
       setIsSending(false);
     }
-  }, [userId, userEmail, displayName, activeMasterId, backupMasterId, isSubscriberProfile, subscriptions, activeProfileId]);
+  }, [userId, userEmail, displayName, activeMasterId, backupMasterId, isSubscriberProfile, subscriptions, activeProfileId, subscriberEmails]);
 
   return useMemo(() => ({
     comments: commentsMap,
