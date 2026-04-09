@@ -393,7 +393,7 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
     prevSubscriberIdsRef.current = newIds;
     setFirestoreSubscribers(subs);
     setIsLoadingSubscribers(false);
-    console.log('[Backup] Firestore subscribers:', subs.length);
+    console.log('[Backup] handleNewSubscribers: received', subs.length, 'subscribers:', subs.map(s => ({ id: s.id, name: s.subscriberName, subscriberId: s.subscriberId })));
   }, []);
 
   const effectiveMasterId = useMemo(() => {
@@ -410,7 +410,7 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
       return;
     }
 
-    console.log('[Backup] Setting up Firestore subscribers listener for masterId:', effectiveMasterId, '(masterId:', masterId, ', firebaseUid:', firebaseUid, ')');
+    console.log('[Backup] Setting up Firestore subscribers listener for masterId:', effectiveMasterId, '(masterId:', masterId, ', firebaseUid:', firebaseUid, ', isMasterEnabled:', isMasterEnabled, ')');
     setIsLoadingSubscribers(true);
 
     const masterIdsToQuery = new Set<string>();
@@ -1871,20 +1871,33 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
     console.log('[Backup] Master mode: enabled');
 
     if (accessToken) {
-      try {
-        console.log('[Backup] Ensuring sync folder exists for master_info.json...');
-        await ensureFolderYandex(accessToken, SYNC_FOLDER);
-        const currentMasterId = masterId || firebaseUid || auth.currentUser?.uid || 'unknown';
-        const masterInfo = {
-          masterId: currentMasterId,
-          yandexUserId: yandexUserId || null,
-          email: userEmail || '',
-          updatedAt: Date.now(),
-        };
-        await uploadTextFileYandex(accessToken, SYNC_FOLDER + '/master_info.json', JSON.stringify(masterInfo));
-        console.log('[Backup] master_info.json created for master mode, masterId:', currentMasterId);
-      } catch (e: any) {
-        console.log('[Backup] Failed to upload master_info.json (non-critical):', e?.message);
+      const MAX_MASTER_INFO_RETRIES = 3;
+      let masterInfoUploaded = false;
+      for (let attempt = 1; attempt <= MAX_MASTER_INFO_RETRIES; attempt++) {
+        try {
+          console.log('[Backup] Ensuring sync folder exists for master_info.json... (attempt', attempt, ')');
+          await ensureFolderYandex(accessToken, SYNC_FOLDER);
+          const currentMasterId = masterId || firebaseUid || auth.currentUser?.uid || 'unknown';
+          const masterInfo = {
+            masterId: currentMasterId,
+            yandexUserId: yandexUserId || null,
+            email: userEmail || '',
+            updatedAt: Date.now(),
+          };
+          await uploadTextFileYandex(accessToken, SYNC_FOLDER + '/master_info.json', JSON.stringify(masterInfo));
+          console.log('[Backup] master_info.json created for master mode, masterId:', currentMasterId);
+          masterInfoUploaded = true;
+          break;
+        } catch (e: any) {
+          console.log('[Backup] Failed to upload master_info.json attempt', attempt, ':', e?.message);
+          if (attempt < MAX_MASTER_INFO_RETRIES) {
+            console.log('[Backup] Retrying master_info.json upload in', attempt * 1000, 'ms...');
+            await new Promise(r => setTimeout(r, attempt * 1000));
+          }
+        }
+      }
+      if (!masterInfoUploaded) {
+        console.log('[Backup] WARNING: master_info.json could not be uploaded after', MAX_MASTER_INFO_RETRIES, 'attempts');
       }
 
       try {
@@ -2176,24 +2189,44 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
   const addSubscription = useCallback(async (name: string, masterUrl: string, subscriberEmail?: string): Promise<MasterSubscription> => {
     let remoteMasterId: string | null = null;
     let linkValid = false;
-    try {
-      const masterInfoContent = await downloadPublicFileYandex(masterUrl, 'master_info.json');
-      const masterInfo = JSON.parse(masterInfoContent);
-      remoteMasterId = masterInfo.masterId || null;
-      if (remoteMasterId) {
-        linkValid = true;
+
+    const MAX_MASTER_INFO_RETRIES = 3;
+    for (let attempt = 1; attempt <= MAX_MASTER_INFO_RETRIES; attempt++) {
+      try {
+        console.log('[Backup] addSubscription: fetching master_info.json attempt', attempt);
+        const masterInfoContent = await downloadPublicFileYandex(masterUrl, 'master_info.json');
+        const masterInfo = JSON.parse(masterInfoContent);
+        remoteMasterId = masterInfo.masterId || null;
+        if (remoteMasterId) {
+          linkValid = true;
+          console.log('[Backup] Got masterId from master_info.json:', remoteMasterId, '(attempt', attempt, ')');
+          break;
+        }
+      } catch (e: any) {
+        console.log('[Backup] Could not fetch master_info.json attempt', attempt, ':', e?.message);
       }
-      console.log('[Backup] Got masterId from master_info.json:', remoteMasterId);
-    } catch (e: any) {
-      console.log('[Backup] Could not fetch master_info.json:', e?.message);
+      if (attempt < MAX_MASTER_INFO_RETRIES && !remoteMasterId) {
+        console.log('[Backup] Waiting 2s before retry...');
+        await new Promise(r => setTimeout(r, 2000));
+      }
     }
 
-    if (!linkValid) {
+    if (!remoteMasterId) {
       try {
+        console.log('[Backup] Trying to get masterId from master_backup.json...');
         const backupContent = await downloadPublicFileYandex(masterUrl, 'master_backup.json');
         if (backupContent) {
           linkValid = true;
           console.log('[Backup] Link validated via master_backup.json');
+          try {
+            const backupData = JSON.parse(backupContent);
+            if (backupData.masterId) {
+              remoteMasterId = backupData.masterId;
+              console.log('[Backup] Got masterId from master_backup.json:', remoteMasterId);
+            }
+          } catch (parseErr) {
+            console.log('[Backup] Could not parse master_backup.json for masterId');
+          }
         }
       } catch (e: any) {
         console.log('[Backup] Could not fetch master_backup.json:', e?.message);
@@ -2206,6 +2239,17 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
         if (manifestContent) {
           linkValid = true;
           console.log('[Backup] Link validated via manifest.json');
+          if (!remoteMasterId) {
+            try {
+              const manifestData = JSON.parse(manifestContent);
+              if (manifestData.masterId) {
+                remoteMasterId = manifestData.masterId;
+                console.log('[Backup] Got masterId from manifest.json:', remoteMasterId);
+              }
+            } catch (parseErr) {
+              console.log('[Backup] Could not parse manifest.json for masterId');
+            }
+          }
         }
       } catch (e: any) {
         console.log('[Backup] Could not fetch manifest.json:', e?.message);
@@ -2217,7 +2261,13 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
     }
 
     if (!remoteMasterId) {
-      console.log('[Backup] Warning: Link is valid but no masterId found. Comments and chats will not work correctly.');
+      console.log('[Backup] WARNING: Link is valid but no masterId found after all attempts. Comments and chats will NOT work.');
+      Alert.alert(
+        'Внимание',
+        'Мастер ещё не опубликовал master_info.json. Комментарии и чат не будут работать. Попросите мастера опубликовать данные заново или подождите и повторите попытку.'
+      );
+    } else {
+      console.log('[Backup] addSubscription: remoteMasterId resolved:', remoteMasterId);
     }
 
     const newSub: MasterSubscription = {
@@ -2231,7 +2281,7 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
     };
     const updated = [...subscriptions, newSub];
     await saveSubscriptions(updated);
-    console.log('[Backup] Added subscription:', newSub.id, name, 'masterId:', remoteMasterId);
+    console.log('[Backup] Added subscription:', newSub.id, name, 'masterId:', remoteMasterId, 'localSubId:', newSub.id);
 
     if (remoteMasterId) {
       let firestoreRegistered = false;
@@ -2270,7 +2320,7 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
             createdAt: serverTimestamp(),
           });
           firestoreRegistered = true;
-          console.log('[Backup] Created Firestore subscription doc: masterId=', remoteMasterId, 'subscriberId=', subscriberUid, 'subscriberName=', subscriberName);
+          console.log('[Backup] Created Firestore subscription doc: masterId=', remoteMasterId, 'subscriberId=', subscriberUid, 'subscriberName=', subscriberName, 'masterUrl=', masterUrl);
         } catch (firestoreErr: any) {
           const errMsg = firestoreErr?.message || '';
           console.log('[Backup] Firestore subscription attempt', attempt, 'failed:', errMsg);
