@@ -705,7 +705,7 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
 
   const signIn = useCallback(async () => {
     console.log('[Backup] Starting sign in...');
-    await promptAsync();
+    await promptAsync({ createTask: false });
   }, [promptAsync]);
 
   const resetMasterSettings = useCallback(async () => {
@@ -777,7 +777,7 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
       await resetMasterSettings();
 
       console.log('[Backup] Old account cleared, starting new auth...');
-      await promptAsync();
+      await promptAsync({ createTask: false });
     } catch (error) {
       console.log('[Backup] Error switching account:', error);
     }
