@@ -126,7 +126,7 @@ export function PinAuth() {
       ? 'Повторите PIN-код'
       : 'Установите PIN-код';
 
-  const BiometricIcon = biometricType === 'face' ? ScanFace : Fingerprint;
+  const BiometricIcon = Fingerprint;
 
   const styles = createStyles(colors);
 
@@ -202,10 +202,7 @@ export function PinAuth() {
           >
             <BiometricIcon size={24} color={colors.primary} />
             <Text style={styles.biometricText}>
-              {Platform.OS === 'ios'
-                ? (biometricType === 'face' ? 'Войти по Face ID' : 'Войти по Touch ID')
-                : (biometricType === 'face' ? 'Войти по распознаванию лица' : 'Войти по отпечатку пальца')
-              }
+  {'Войти по отпечатку пальца'}
             </Text>
           </TouchableOpacity>
         )}

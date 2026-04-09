@@ -396,24 +396,15 @@ export default function SettingsScreen() {
         {hasPin && Platform.OS !== 'web' && (
           <View style={[styles.settingRow, !biometricAvailable && { opacity: 0.5 }]}>
             <View style={[styles.settingIcon, { backgroundColor: '#2196F3' + '20' }]}>
-              {biometricType === 'face' ? (
-                <ScanFace size={20} color="#2196F3" />
-              ) : (
-                <Fingerprint size={20} color="#2196F3" />
-              )}
+              <Fingerprint size={20} color="#2196F3" />
             </View>
             <View style={styles.settingInfo}>
               <Text style={styles.settingLabel}>
-                {Platform.OS === 'ios'
-                  ? (biometricType === 'face' ? 'Вход по Face ID' : 'Вход по Touch ID')
-                  : (biometricType === 'face' ? 'Вход по распознаванию лица' : 'Вход по отпечатку пальца')
-                }
+                {'Вход по отпечатку пальца'}
               </Text>
               <Text style={styles.settingDesc}>
                 {biometricAvailable
-                  ? (Platform.OS === 'ios'
-                    ? (biometricType === 'face' ? 'Разблокировка через Face ID' : 'Разблокировка через Touch ID')
-                    : (biometricType === 'face' ? 'Разблокировка через распознавание лица' : 'Разблокировка отпечатком пальца'))
+                  ? 'Разблокировка отпечатком пальца'
                   : 'Биометрия недоступна на этом устройстве'
                 }
               </Text>
