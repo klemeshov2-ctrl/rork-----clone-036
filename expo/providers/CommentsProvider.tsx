@@ -112,14 +112,19 @@ export const [CommentsProvider, useComments] = createContextHook<CommentsContext
   }, []);
 
   const activeMasterId = useMemo(() => {
+    let result: string | null;
     if (!isSubscriberProfile) {
-      return backupMasterId || userId;
+      result = backupMasterId || userId;
+    } else {
+      const activeSub = subscriptions.find(s => s.id === activeProfileId);
+      if (activeSub?.masterId) {
+        result = activeSub.masterId;
+      } else {
+        result = backupMasterId || userId;
+      }
     }
-    const activeSub = subscriptions.find(s => s.id === activeProfileId);
-    if (activeSub?.masterId) {
-      return activeSub.masterId;
-    }
-    return backupMasterId || userId;
+    console.log('[Comments][DEBUG] activeMasterId computed:', result, '| isSubscriber:', isSubscriberProfile, '| backupMasterId:', backupMasterId, '| userId:', userId, '| activeProfileId:', activeProfileId);
+    return result;
   }, [isSubscriberProfile, activeProfileId, subscriptions, backupMasterId, userId]);
 
   useEffect(() => {
@@ -137,7 +142,9 @@ export const [CommentsProvider, useComments] = createContextHook<CommentsContext
     subscriptions.forEach(s => {
       if (s.masterId) ids.add(s.masterId);
     });
-    return Array.from(ids).filter(Boolean);
+    const result = Array.from(ids).filter(Boolean);
+    console.log('[Comments][DEBUG] relevantMasterIds computed:', result, '| backupMasterId:', backupMasterId, '| userId:', userId, '| firestoreUid:', firestoreUid, '| subscriptions masterId list:', subscriptions.map(s => s.masterId));
+    return result;
   }, [backupMasterId, userId, firestoreUid, subscriptions]);
 
   useEffect(() => {
@@ -190,6 +197,7 @@ export const [CommentsProvider, useComments] = createContextHook<CommentsContext
       };
 
       const handleGlobalDocs = (docs: Comment[]) => {
+        console.log('[Comments][DEBUG] handleGlobalDocs called with', docs.length, 'docs, userId:', userId, 'activeMasterId:', activeMasterId);
         const newIds = new Set(docs.map(c => c.id));
         const prevIds = prevCommentIdsRef.current;
         const freshComments = docs.filter(c =>
@@ -409,7 +417,9 @@ export const [CommentsProvider, useComments] = createContextHook<CommentsContext
   }, []);
 
   const addComment = useCallback(async (entityType: CommentEntityType, entityId: string, text: string) => {
+    console.log('[Comments][DEBUG] addComment called:', { entityType, entityId, textLen: text.length, userId, activeMasterId, isSubscriberProfile });
     if (!userId) {
+      console.log('[Comments][DEBUG] addComment: userId is null, aborting');
       Alert.alert('Ошибка', 'Авторизация не завершена. Попробуйте позже.');
       return;
     }
@@ -493,13 +503,17 @@ export const [CommentsProvider, useComments] = createContextHook<CommentsContext
   }, [userId, userEmail, displayName, activeMasterId, backupMasterId, isSubscriberProfile, subscriptions, activeProfileId, subscriberEmails, firestoreSubscribers]);
 
   const canWriteComments = useMemo(() => {
+    let result: boolean;
     if (isSubscriberProfile) {
       const activeSub = subscriptions.find(s => s.id === activeProfileId);
-      if (!activeSub || !activeSub.masterId) return false;
-      if (!activeMasterId || activeMasterId === userId) return false;
-      return true;
+      if (!activeSub || !activeSub.masterId) result = false;
+      else if (!activeMasterId || activeMasterId === userId) result = false;
+      else result = true;
+    } else {
+      result = firestoreSubscribers.length > 0;
     }
-    return firestoreSubscribers.length > 0;
+    console.log('[Comments][DEBUG] canWriteComments:', result, '| isSubscriber:', isSubscriberProfile, '| firestoreSubscribers:', firestoreSubscribers.length, '| activeMasterId:', activeMasterId, '| userId:', userId);
+    return result;
   }, [isSubscriberProfile, subscriptions, activeProfileId, activeMasterId, userId, firestoreSubscribers]);
 
   const cannotWriteReason = useMemo(() => {

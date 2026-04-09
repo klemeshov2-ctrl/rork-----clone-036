@@ -166,15 +166,16 @@ export default function ChatScreen() {
   unloadMessagesRef.current = unloadMessages;
 
   useEffect(() => {
+    console.log('[ChatScreen][DEBUG] useEffect triggered. masterId:', masterId, '| subscriberId:', subscriberId, '| userId:', userId, '| partnerName:', partnerName);
     if (masterId && subscriberId) {
-      console.log('[ChatScreen] Loading messages for:', masterId, subscriberId);
+      console.log('[ChatScreen][DEBUG] Loading messages for:', masterId, subscriberId);
       loadMessagesRef.current(masterId, subscriberId);
       markChatAsReadRef.current(masterId, subscriberId);
     } else {
-      console.log('[ChatScreen] Missing params - masterId:', masterId, 'subscriberId:', subscriberId);
+      console.log('[ChatScreen][DEBUG] Missing params - masterId:', masterId, 'subscriberId:', subscriberId);
     }
     return () => {
-      console.log('[ChatScreen] Unmounting, unloading messages');
+      console.log('[ChatScreen][DEBUG] Unmounting, unloading messages');
       unloadMessagesRef.current();
     };
   }, [masterId, subscriberId]);
@@ -182,6 +183,7 @@ export default function ChatScreen() {
   const prevMessagesLenRef = useRef(0);
 
   useEffect(() => {
+    console.log('[ChatScreen][DEBUG] messages.length changed:', messages.length, '| prev:', prevMessagesLenRef.current, '| hasScrolled:', hasScrolledRef.current);
     if (messages.length > 0 && !hasScrolledRef.current) {
       hasScrolledRef.current = true;
       setTimeout(() => {
@@ -221,10 +223,15 @@ export default function ChatScreen() {
 
   const handleSend = useCallback(async () => {
     const trimmed = text.trim();
-    if (!trimmed || !masterId || !subscriberId) return;
+    console.log('[ChatScreen][DEBUG] handleSend called. textLen:', trimmed.length, '| masterId:', masterId, '| subscriberId:', subscriberId, '| userId:', userId);
+    if (!trimmed || !masterId || !subscriberId) {
+      console.log('[ChatScreen][DEBUG] handleSend: aborting, missing data. trimmed:', !!trimmed, 'masterId:', !!masterId, 'subscriberId:', !!subscriberId);
+      return;
+    }
     setText('');
     await sendMessage(masterId, subscriberId, trimmed);
-  }, [text, masterId, subscriberId, sendMessage]);
+    console.log('[ChatScreen][DEBUG] handleSend: sendMessage completed');
+  }, [text, masterId, subscriberId, sendMessage, userId]);
 
   const renderItem = useCallback(
     ({ item }: { item: ChatMessage }) => (

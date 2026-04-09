@@ -71,6 +71,7 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
 
 
   useEffect(() => {
+    console.log('[Chat][DEBUG] commentsUserId changed:', commentsUserId, '| prev userId:', userId);
     setUserId(commentsUserId);
   }, [commentsUserId]);
 
@@ -91,14 +92,19 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
   }, []);
 
   const activeMasterId = useMemo(() => {
+    let result: string | null;
     if (!isSubscriberProfile) {
-      return backupMasterId || userId;
+      result = backupMasterId || userId;
+    } else {
+      const activeSub = subscriptions.find(s => s.id === activeProfileId);
+      if (activeSub?.masterId) {
+        result = activeSub.masterId;
+      } else {
+        result = backupMasterId || userId;
+      }
     }
-    const activeSub = subscriptions.find(s => s.id === activeProfileId);
-    if (activeSub?.masterId) {
-      return activeSub.masterId;
-    }
-    return backupMasterId || userId;
+    console.log('[Chat][DEBUG] activeMasterId computed:', result, '| isSubscriber:', isSubscriberProfile, '| backupMasterId:', backupMasterId, '| userId:', userId, '| activeProfileId:', activeProfileId);
+    return result;
   }, [isSubscriberProfile, activeProfileId, subscriptions, backupMasterId, userId]);
 
   const relevantMasterIds = useMemo(() => {
@@ -109,7 +115,9 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
     subscriptions.forEach(s => {
       if (s.masterId) ids.add(s.masterId);
     });
-    return Array.from(ids).filter(Boolean);
+    const result = Array.from(ids).filter(Boolean);
+    console.log('[Chat][DEBUG] relevantMasterIds computed:', result, '| backupMasterId:', backupMasterId, '| userId:', userId, '| firestoreUid:', firestoreUid, '| subscriptions masterId list:', subscriptions.map(s => s.masterId));
+    return result;
   }, [backupMasterId, userId, firestoreUid, subscriptions]);
 
   useEffect(() => {
@@ -331,7 +339,7 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
   }, []);
 
   const loadMessages = useCallback((masterId: string, subscriberId: string) => {
-    console.log('[Chat] Loading messages for master:', masterId, 'subscriber:', subscriberId);
+    console.log('[Chat][DEBUG] loadMessages called:', { masterId, subscriberId, userId, prevActiveChat: activeLoadedChatRef.current, hasExistingSub: !!messagesUnsubRef.current });
     activeLoadedChatRef.current = `${masterId}_${subscriberId}`;
 
     if (messagesUnsubRef.current) {
@@ -415,7 +423,9 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
   }, [userId]);
 
   const sendMessage = useCallback(async (masterId: string, subscriberId: string, text: string) => {
+    console.log('[Chat][DEBUG] sendMessage called:', { masterId, subscriberId, textLen: text.length, userId, isSubscriberProfile, activeProfileId });
     if (!userId) {
+      console.log('[Chat][DEBUG] sendMessage: userId is null, aborting');
       Alert.alert('Ошибка', 'Авторизация не завершена.');
       return;
     }
@@ -440,7 +450,8 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
 
     try {
       try {
-        await addDoc(collection(firestore, 'messages'), {
+        console.log('[Chat][DEBUG] sendMessage: Adding message doc to Firestore:', { masterId, subscriberId, senderId: userId, senderName: resolvedName });
+        const msgDocRef = await addDoc(collection(firestore, 'messages'), {
           masterId,
           subscriberId,
           text,
@@ -449,7 +460,7 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
           createdAt: serverTimestamp(),
           isRead: false,
         });
-        console.log('[Chat] Message doc added to Firestore');
+        console.log('[Chat] Message doc added to Firestore, id:', msgDocRef.id);
       } catch (msgErr: unknown) {
         const errMsg = msgErr instanceof Error ? msgErr.message : String(msgErr);
         console.log('[Chat] Failed to add message doc:', errMsg);
@@ -462,8 +473,10 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
 
       try {
         const chatDocId = getChatDocId(masterId, subscriberId);
+        console.log('[Chat][DEBUG] sendMessage: Updating/creating chat doc:', chatDocId);
         const chatRef = doc(firestore, 'chats', chatDocId);
         const chatSnap = await getDoc(chatRef);
+        console.log('[Chat][DEBUG] sendMessage: chatSnap exists:', chatSnap.exists(), 'data:', chatSnap.exists() ? JSON.stringify({ participants: chatSnap.data()?.participants, masterId: chatSnap.data()?.masterId, subscriberId: chatSnap.data()?.subscriberId }) : 'N/A');
 
         const activeSub = subscriptions.find(s => s.masterId === masterId);
 
@@ -512,7 +525,7 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
   }, [userId, userEmail, displayName, isSubscriberProfile, subscriptions, activeProfileId, loadMessages]);
 
   const deleteChat = useCallback(async (masterId: string, subscriberId: string) => {
-    console.log('[Chat] Deleting chat:', masterId, subscriberId);
+    console.log('[Chat][DEBUG] deleteChat called:', { masterId, subscriberId, userId });
     setIsDeleting(true);
     try {
       const chatDocId = getChatDocId(masterId, subscriberId);

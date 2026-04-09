@@ -397,10 +397,13 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
   }, []);
 
   const effectiveMasterId = useMemo(() => {
-    return masterId || firebaseUid || null;
+    const result = masterId || firebaseUid || null;
+    console.log('[Backup][DEBUG] effectiveMasterId computed:', result, '| masterId:', masterId, '| firebaseUid:', firebaseUid, '| isMasterEnabled:', isMasterEnabled);
+    return result;
   }, [masterId, firebaseUid]);
 
   useEffect(() => {
+    console.log('[Backup][DEBUG] Subscribers listener useEffect triggered. effectiveMasterId:', effectiveMasterId, '| masterId:', masterId, '| firebaseUid:', firebaseUid, '| isMasterEnabled:', isMasterEnabled);
     if (!effectiveMasterId) {
       console.log('[Backup] No effectiveMasterId yet, skipping subscribers listener');
       return;
@@ -545,8 +548,10 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
       setYandexUserId(yandexId);
       await AsyncStorage.setItem(MASTER_YANDEX_ID_KEY, yandexId);
 
+      console.log('[Backup][DEBUG] linkMasterToYandex: checking yandex_masters doc for yandexId:', yandexId);
       const masterDocRef = doc(firestore, 'yandex_masters', yandexId);
       const masterDoc = await getDoc(masterDocRef);
+      console.log('[Backup][DEBUG] linkMasterToYandex: masterDoc exists:', masterDoc.exists(), 'data:', masterDoc.exists() ? JSON.stringify(masterDoc.data()) : 'N/A');
 
       if (masterDoc.exists()) {
         const data = masterDoc.data();
@@ -2308,11 +2313,13 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
     console.log('[Backup] Added subscription:', newSub.id, name, 'masterId:', remoteMasterId, 'localSubId:', newSub.id);
 
     if (remoteMasterId) {
+      console.log('[Backup][DEBUG] addSubscription: Starting Firestore registration with remoteMasterId:', remoteMasterId);
       let firestoreRegistered = false;
       const MAX_RETRIES = 3;
       for (let attempt = 1; attempt <= MAX_RETRIES && !firestoreRegistered; attempt++) {
         try {
           let currentUser = auth.currentUser;
+          console.log('[Backup][DEBUG] addSubscription: attempt', attempt, '| currentUser:', currentUser?.uid || 'null');
           if (!currentUser) {
             console.log('[Backup] No Firebase user yet, signing in anonymously... (attempt', attempt, ')');
             const { signInAnonymously } = await import('firebase/auth');
@@ -2324,19 +2331,22 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
           const storedDisplayName = await AsyncStorage.getItem('@user_display_name');
           const subscriberName = storedDisplayName || name || ('Подписчик_' + subscriberUid.slice(0, 6));
 
+          console.log('[Backup][DEBUG] addSubscription: Checking existing Firestore doc for masterId:', remoteMasterId, 'subscriberId:', subscriberUid);
           const existingQuery = query(
             collection(firestore, 'subscriptions'),
             where('masterId', '==', remoteMasterId),
             where('subscriberId', '==', subscriberUid)
           );
           const existingSnap = await getDocs(existingQuery);
+          console.log('[Backup][DEBUG] addSubscription: existingSnap.empty:', existingSnap.empty, 'size:', existingSnap.size);
           if (!existingSnap.empty) {
             console.log('[Backup] Subscriber already registered in Firestore, skipping duplicate');
             firestoreRegistered = true;
             break;
           }
 
-          await addDoc(collection(firestore, 'subscriptions'), {
+          console.log('[Backup][DEBUG] addSubscription: Creating Firestore doc with data:', JSON.stringify({ masterId: remoteMasterId, subscriberId: subscriberUid, subscriberName, masterUrl }));
+          const docRef = await addDoc(collection(firestore, 'subscriptions'), {
             masterId: remoteMasterId,
             subscriberId: subscriberUid,
             subscriberName,
@@ -2344,7 +2354,7 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
             createdAt: serverTimestamp(),
           });
           firestoreRegistered = true;
-          console.log('[Backup] Created Firestore subscription doc: masterId=', remoteMasterId, 'subscriberId=', subscriberUid, 'subscriberName=', subscriberName, 'masterUrl=', masterUrl);
+          console.log('[Backup] Created Firestore subscription doc: id=', docRef.id, 'masterId=', remoteMasterId, 'subscriberId=', subscriberUid, 'subscriberName=', subscriberName, 'masterUrl=', masterUrl);
         } catch (firestoreErr: any) {
           const errMsg = firestoreErr?.message || '';
           console.log('[Backup] Firestore subscription attempt', attempt, 'failed:', errMsg);
