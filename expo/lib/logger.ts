@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-export type LogLevel = 'error';
+export type LogLevel = 'error' | 'warn' | 'info' | 'debug';
 
 export interface LogEntry {
   id: string;
@@ -9,10 +9,11 @@ export interface LogEntry {
   originalMessage?: string;
   stack?: string;
   timestamp: number;
+  source?: string;
 }
 
 const LOGS_KEY = '@app_logs';
-const MAX_LOGS = 100;
+const MAX_LOGS = 500;
 
 let logsCache: LogEntry[] = [];
 let initialized = false;
@@ -109,8 +110,55 @@ const IGNORED_PATTERNS: RegExp[] = [
   /Non-serializable values were found in the navigation state/i,
 ];
 
+const LOG_IGNORED_PATTERNS: RegExp[] = [
+  /^Running "main"/i,
+  /^%c/,
+  /Bridgeless mode is enabled/i,
+  /new NativeEventEmitter/i,
+  /Sending.*with no listeners/i,
+  /Animated: `useNativeDriver`/i,
+  /fontFamily.*is not a system font/i,
+  /^Overwriting fontFamily/i,
+  /EventEmitter\.removeListener/i,
+];
+
 function shouldIgnore(message: string): boolean {
   return IGNORED_PATTERNS.some(p => p.test(message));
+}
+
+function shouldIgnoreLog(message: string): boolean {
+  return LOG_IGNORED_PATTERNS.some(p => p.test(message));
+}
+
+function extractSource(message: string): string | undefined {
+  const bracketMatch = message.match(/^\[([^\]]+)\]/);
+  if (bracketMatch) return bracketMatch[1];
+  return undefined;
+}
+
+function formatArgs(args: unknown[]): string {
+  return args.map(a => {
+    if (a instanceof Error) return `${a.message}\n${a.stack || ''}`;
+    if (typeof a === 'object' && a !== null) {
+      try { return JSON.stringify(a, null, 2); } catch { return '[object]'; }
+    }
+    if (a === null) return 'null';
+    if (a === undefined) return 'undefined';
+    return typeof a === 'string' ? a : String(a);
+  }).join(' ');
+}
+
+let saveTimeout: ReturnType<typeof setTimeout> | null = null;
+
+function debouncedSave() {
+  if (saveTimeout) clearTimeout(saveTimeout);
+  saveTimeout = setTimeout(async () => {
+    try {
+      await AsyncStorage.setItem(LOGS_KEY, JSON.stringify(logsCache));
+    } catch {
+      // ignore
+    }
+  }, 1000);
 }
 
 export async function initLogger(): Promise<void> {
@@ -121,54 +169,76 @@ export async function initLogger(): Promise<void> {
     const stored = await AsyncStorage.getItem(LOGS_KEY);
     if (stored) {
       const parsed = JSON.parse(stored) as LogEntry[];
-      logsCache = parsed.filter(e => e.level === 'error');
+      logsCache = parsed;
     }
   } catch {
     logsCache = [];
   }
 
+  const originalLog = console.log;
+  const originalWarn = console.warn;
   const originalError = console.error;
+
+  console.log = (...args: unknown[]) => {
+    originalLog(...args);
+    const message = formatArgs(args);
+    if (shouldIgnoreLog(message)) return;
+    void addLogEntry('info', message);
+  };
+
+  console.warn = (...args: unknown[]) => {
+    originalWarn(...args);
+    const message = formatArgs(args);
+    if (shouldIgnore(message) || shouldIgnoreLog(message)) return;
+    void addLogEntry('warn', message);
+  };
 
   console.error = (...args: unknown[]) => {
     originalError(...args);
-    const message = args.map(a => {
-      if (a instanceof Error) return `${a.message}\n${a.stack || ''}`;
-      if (typeof a === 'object' && a !== null) {
-        try { return JSON.stringify(a); } catch { return '[object]'; }
-      }
-      if (a === null || a === undefined) return '';
-      return typeof a === 'string' ? a : JSON.stringify(a);
-    }).join(' ');
-
+    const message = formatArgs(args);
     if (shouldIgnore(message)) return;
-
     void addLogEntry('error', message);
   };
 }
 
 async function addLogEntry(level: LogLevel, message: string, stack?: string): Promise<void> {
-  const translated = translateErrorMessage(message);
+  const source = extractSource(message);
+  const displayMessage = level === 'error' ? translateErrorMessage(message) : message.slice(0, 1000);
+
   const entry: LogEntry = {
     id: generateId(),
     level,
-    message: translated,
-    originalMessage: message.slice(0, 2000),
+    message: displayMessage,
+    originalMessage: level === 'error' ? message.slice(0, 2000) : undefined,
     stack: stack?.slice(0, 2000),
     timestamp: Date.now(),
+    source,
   };
 
   logsCache = [entry, ...logsCache].slice(0, MAX_LOGS);
   notifyListeners();
+  debouncedSave();
+}
 
-  try {
-    await AsyncStorage.setItem(LOGS_KEY, JSON.stringify(logsCache));
-  } catch {
-    // ignore storage errors
-  }
+export function addManualLog(level: LogLevel, message: string, source?: string): void {
+  const entry: LogEntry = {
+    id: generateId(),
+    level,
+    message,
+    timestamp: Date.now(),
+    source,
+  };
+  logsCache = [entry, ...logsCache].slice(0, MAX_LOGS);
+  notifyListeners();
+  debouncedSave();
 }
 
 export function getLogs(): LogEntry[] {
   return logsCache;
+}
+
+export function getLogsByLevel(level: LogLevel): LogEntry[] {
+  return logsCache.filter(e => e.level === level);
 }
 
 export async function clearLogs(): Promise<void> {
@@ -181,10 +251,30 @@ export async function clearLogs(): Promise<void> {
   }
 }
 
-export function getLogsAsText(): string {
-  return logsCache.map(entry => {
+export async function clearLogsByLevel(level: LogLevel): Promise<void> {
+  logsCache = logsCache.filter(e => e.level !== level);
+  notifyListeners();
+  try {
+    await AsyncStorage.setItem(LOGS_KEY, JSON.stringify(logsCache));
+  } catch {
+    // ignore
+  }
+}
+
+const LEVEL_LABELS: Record<LogLevel, string> = {
+  error: 'ОШИБКА',
+  warn: 'ПРЕДУПР',
+  info: 'ИНФО',
+  debug: 'ОТЛАДКА',
+};
+
+export function getLogsAsText(filterLevel?: LogLevel): string {
+  const filtered = filterLevel ? logsCache.filter(e => e.level === filterLevel) : logsCache;
+  return filtered.map(entry => {
     const date = new Date(entry.timestamp);
     const ts = `${date.toLocaleDateString('ru-RU')} ${date.toLocaleTimeString('ru-RU')}`;
-    return `[ОШИБКА] ${ts}\n${entry.message}${entry.originalMessage ? `\n\nОригинал: ${entry.originalMessage}` : ''}${entry.stack ? `\n${entry.stack}` : ''}`;
+    const label = LEVEL_LABELS[entry.level] || entry.level.toUpperCase();
+    const src = entry.source ? ` [${entry.source}]` : '';
+    return `[${label}]${src} ${ts}\n${entry.message}${entry.originalMessage ? `\n\nОригинал: ${entry.originalMessage}` : ''}${entry.stack ? `\n${entry.stack}` : ''}`;
   }).join('\n\n---\n\n');
 }

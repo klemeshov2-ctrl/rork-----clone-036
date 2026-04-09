@@ -7,12 +7,22 @@ import {
   TouchableOpacity,
   Alert,
   Platform,
+  ScrollView,
 } from 'react-native';
 import { Stack } from 'expo-router';
-import { Trash2, Copy, AlertCircle, ShieldAlert } from 'lucide-react-native';
+import { Trash2, Copy, AlertCircle, ShieldAlert, AlertTriangle, Info, Bug } from 'lucide-react-native';
 import { useThemeColors } from '@/providers/ThemeProvider';
 import { ThemeColors } from '@/constants/colors';
-import { getLogs, clearLogs, getLogsAsText, subscribe, LogEntry } from '@/lib/logger';
+import { getLogs, clearLogs, getLogsAsText, subscribe, LogEntry, LogLevel, clearLogsByLevel } from '@/lib/logger';
+
+type FilterLevel = 'all' | LogLevel;
+
+const LEVEL_CONFIG: Record<LogLevel, { label: string; icon: typeof AlertCircle; colorKey: keyof ThemeColors }> = {
+  error: { label: 'Ошибки', icon: AlertCircle, colorKey: 'error' },
+  warn: { label: 'Предупр.', icon: AlertTriangle, colorKey: 'warning' },
+  info: { label: 'Инфо', icon: Info, colorKey: 'info' },
+  debug: { label: 'Отладка', icon: Bug, colorKey: 'textMuted' },
+};
 
 function formatTimestamp(ts: number): string {
   const d = new Date(ts);
@@ -24,8 +34,30 @@ function formatTimestamp(ts: number): string {
   return `${day}.${month} ${hours}:${minutes}:${seconds}`;
 }
 
+function getLevelColor(level: LogLevel, colors: ThemeColors): string {
+  switch (level) {
+    case 'error': return colors.error;
+    case 'warn': return colors.warning;
+    case 'info': return colors.info;
+    case 'debug': return colors.textMuted;
+    default: return colors.textMuted;
+  }
+}
+
+function getLevelLabel(level: LogLevel): string {
+  switch (level) {
+    case 'error': return 'ошибка';
+    case 'warn': return 'предупр';
+    case 'info': return 'инфо';
+    case 'debug': return 'отладка';
+    default: return level;
+  }
+}
+
 function LogEntryCard({ entry, colors }: { entry: LogEntry; colors: ThemeColors }) {
   const [expanded, setExpanded] = useState(false);
+  const levelColor = getLevelColor(entry.level, colors);
+  const LevelIcon = LEVEL_CONFIG[entry.level]?.icon || Info;
 
   return (
     <TouchableOpacity
@@ -35,16 +67,16 @@ function LogEntryCard({ entry, colors }: { entry: LogEntry; colors: ThemeColors 
         padding: 12,
         marginBottom: 8,
         borderWidth: 1,
-        borderColor: colors.error + '30',
+        borderColor: levelColor + '25',
         borderLeftWidth: 3,
-        borderLeftColor: colors.error,
+        borderLeftColor: levelColor,
       }}
       onPress={() => setExpanded(!expanded)}
       activeOpacity={0.7}
     >
       <View style={{ flexDirection: 'row' as const, alignItems: 'center' as const, marginBottom: 6 }}>
         <View style={{
-          backgroundColor: colors.error + '15',
+          backgroundColor: levelColor + '15',
           borderRadius: 6,
           paddingHorizontal: 8,
           paddingVertical: 2,
@@ -53,11 +85,24 @@ function LogEntryCard({ entry, colors }: { entry: LogEntry; colors: ThemeColors 
           gap: 4,
           marginRight: 8,
         }}>
-          <AlertCircle size={12} color={colors.error} />
-          <Text style={{ fontSize: 10, fontWeight: '700' as const, color: colors.error, textTransform: 'uppercase' as const }}>
-            ошибка
+          <LevelIcon size={12} color={levelColor} />
+          <Text style={{ fontSize: 10, fontWeight: '700' as const, color: levelColor, textTransform: 'uppercase' as const }}>
+            {getLevelLabel(entry.level)}
           </Text>
         </View>
+        {entry.source && (
+          <View style={{
+            backgroundColor: colors.primary + '15',
+            borderRadius: 6,
+            paddingHorizontal: 6,
+            paddingVertical: 2,
+            marginRight: 8,
+          }}>
+            <Text style={{ fontSize: 9, fontWeight: '600' as const, color: colors.primary }}>
+              {entry.source}
+            </Text>
+          </View>
+        )}
         <Text style={{ fontSize: 11, color: colors.textMuted, fontVariant: ['tabular-nums' as const] }}>
           {formatTimestamp(entry.timestamp)}
         </Text>
@@ -95,32 +140,49 @@ function LogEntryCard({ entry, colors }: { entry: LogEntry; colors: ThemeColors 
 export default function LogsScreen() {
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const [logs, setLogs] = useState<LogEntry[]>(getLogs());
+  const [allLogs, setAllLogs] = useState<LogEntry[]>(getLogs());
+  const [filter, setFilter] = useState<FilterLevel>('all');
 
   useEffect(() => {
     const unsub = subscribe(() => {
-      setLogs([...getLogs()]);
+      setAllLogs([...getLogs()]);
     });
     return unsub;
   }, []);
 
+  const filteredLogs = useMemo(() => {
+    if (filter === 'all') return allLogs;
+    return allLogs.filter(e => e.level === filter);
+  }, [allLogs, filter]);
+
+  const counts = useMemo(() => {
+    const c = { error: 0, warn: 0, info: 0, debug: 0 };
+    allLogs.forEach(e => { c[e.level] = (c[e.level] || 0) + 1; });
+    return c;
+  }, [allLogs]);
+
   const handleClear = useCallback(() => {
-    Alert.alert('Очистить журнал', 'Удалить все записи об ошибках?', [
+    const label = filter === 'all' ? 'все записи' : `записи "${getLevelLabel(filter as LogLevel)}"`;
+    Alert.alert('Очистить журнал', `Удалить ${label}?`, [
       { text: 'Отмена', style: 'cancel' },
       {
         text: 'Удалить',
         style: 'destructive',
         onPress: async () => {
-          await clearLogs();
-          setLogs([]);
+          if (filter === 'all') {
+            await clearLogs();
+          } else {
+            await clearLogsByLevel(filter as LogLevel);
+          }
+          setAllLogs([...getLogs()]);
         },
       },
     ]);
-  }, []);
+  }, [filter]);
 
   const handleCopy = useCallback(async () => {
     try {
-      const text = getLogsAsText();
+      const text = getLogsAsText(filter === 'all' ? undefined : filter as LogLevel);
       if (!text) {
         Alert.alert('Пусто', 'Нет записей для копирования');
         return;
@@ -131,11 +193,11 @@ export default function LogsScreen() {
       } else {
         await navigator.clipboard.writeText(text);
       }
-      Alert.alert('Скопировано', 'Журнал ошибок скопирован в буфер обмена');
+      Alert.alert('Скопировано', 'Журнал скопирован в буфер обмена');
     } catch {
       Alert.alert('Ошибка', 'Не удалось скопировать');
     }
-  }, []);
+  }, [filter]);
 
   const renderItem = useCallback(({ item }: { item: LogEntry }) => (
     <LogEntryCard entry={item} colors={colors} />
@@ -143,17 +205,53 @@ export default function LogsScreen() {
 
   const keyExtractor = useCallback((item: LogEntry) => item.id, []);
 
+  const filterOptions: { key: FilterLevel; label: string; color: string; count: number }[] = [
+    { key: 'all', label: 'Все', color: colors.primary, count: allLogs.length },
+    { key: 'error', label: 'Ошибки', color: colors.error, count: counts.error },
+    { key: 'warn', label: 'Предупр.', color: colors.warning, count: counts.warn },
+    { key: 'info', label: 'Инфо', color: colors.info, count: counts.info },
+    { key: 'debug', label: 'Отладка', color: colors.textMuted, count: counts.debug },
+  ];
+
   return (
     <View style={styles.container}>
-      <Stack.Screen options={{ title: 'Журнал ошибок' }} />
+      <Stack.Screen options={{ title: 'Журнал отладки' }} />
 
-      <View style={styles.statsRow}>
-        <View style={[styles.statCard, { borderColor: colors.error + '30' }]}>
-          <AlertCircle size={16} color={colors.error} />
-          <Text style={[styles.statNumber, { color: colors.error }]}>{logs.length}</Text>
-          <Text style={styles.statLabel}>ошибок</Text>
-        </View>
-      </View>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.filterRow}
+      >
+        {filterOptions.map(opt => {
+          const isActive = filter === opt.key;
+          return (
+            <TouchableOpacity
+              key={opt.key}
+              style={[
+                styles.filterChip,
+                {
+                  backgroundColor: isActive ? opt.color + '20' : colors.surfaceElevated,
+                  borderColor: isActive ? opt.color : colors.border,
+                },
+              ]}
+              onPress={() => setFilter(opt.key)}
+              activeOpacity={0.7}
+            >
+              <Text style={[
+                styles.filterChipText,
+                { color: isActive ? opt.color : colors.textSecondary },
+              ]}>
+                {opt.label}
+              </Text>
+              {opt.count > 0 && (
+                <View style={[styles.filterBadge, { backgroundColor: isActive ? opt.color : colors.textMuted + '40' }]}>
+                  <Text style={styles.filterBadgeText}>{opt.count > 99 ? '99+' : opt.count}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
 
       <View style={styles.actionsRow}>
         <TouchableOpacity style={styles.actionBtn} onPress={handleCopy} activeOpacity={0.7}>
@@ -166,15 +264,19 @@ export default function LogsScreen() {
         </TouchableOpacity>
       </View>
 
-      {logs.length === 0 ? (
+      {filteredLogs.length === 0 ? (
         <View style={styles.emptyContainer}>
           <ShieldAlert size={40} color={colors.textMuted} />
-          <Text style={styles.emptyTitle}>Ошибок нет</Text>
-          <Text style={styles.emptySubtext}>Критические ошибки будут отображаться здесь на русском языке</Text>
+          <Text style={styles.emptyTitle}>Записей нет</Text>
+          <Text style={styles.emptySubtext}>
+            {filter === 'all'
+              ? 'Все логи будут отображаться здесь для отладки'
+              : `Нет записей типа "${getLevelLabel(filter as LogLevel)}"`}
+          </Text>
         </View>
       ) : (
         <FlatList
-          data={logs}
+          data={filteredLogs}
           renderItem={renderItem}
           keyExtractor={keyExtractor}
           contentContainerStyle={styles.listContent}
@@ -191,30 +293,38 @@ function createStyles(colors: ThemeColors) {
       flex: 1,
       backgroundColor: colors.background,
     },
-    statsRow: {
+    filterRow: {
       flexDirection: 'row',
-      gap: 12,
+      gap: 8,
       paddingHorizontal: 16,
       paddingTop: 12,
       paddingBottom: 8,
     },
-    statCard: {
-      flex: 1,
+    filterChip: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 8,
-      backgroundColor: colors.surfaceElevated,
-      borderRadius: 12,
-      padding: 12,
+      gap: 6,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 20,
       borderWidth: 1,
     },
-    statNumber: {
-      fontSize: 18,
-      fontWeight: '700',
+    filterChipText: {
+      fontSize: 13,
+      fontWeight: '600',
     },
-    statLabel: {
-      fontSize: 12,
-      color: colors.textMuted,
+    filterBadge: {
+      minWidth: 20,
+      height: 18,
+      borderRadius: 9,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 5,
+    },
+    filterBadgeText: {
+      fontSize: 10,
+      fontWeight: '700',
+      color: '#FFFFFF',
     },
     actionsRow: {
       flexDirection: 'row',
