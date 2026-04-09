@@ -145,6 +145,7 @@ export default function ChatScreen() {
   const {
     messages,
     loadMessages,
+    unloadMessages,
     sendMessage,
     markChatAsRead,
     isLoadingMessages,
@@ -157,13 +158,26 @@ export default function ChatScreen() {
   const hasScrolledRef = useRef(false);
   const keyboardHeightRef = useRef(new Animated.Value(0)).current;
 
+  const loadMessagesRef = useRef(loadMessages);
+  loadMessagesRef.current = loadMessages;
+  const markChatAsReadRef = useRef(markChatAsRead);
+  markChatAsReadRef.current = markChatAsRead;
+  const unloadMessagesRef = useRef(unloadMessages);
+  unloadMessagesRef.current = unloadMessages;
+
   useEffect(() => {
     if (masterId && subscriberId) {
       console.log('[ChatScreen] Loading messages for:', masterId, subscriberId);
-      loadMessages(masterId, subscriberId);
-      markChatAsRead(masterId, subscriberId);
+      loadMessagesRef.current(masterId, subscriberId);
+      markChatAsReadRef.current(masterId, subscriberId);
     }
-  }, [masterId, subscriberId, loadMessages, markChatAsRead]);
+    return () => {
+      console.log('[ChatScreen] Unmounting, unloading messages');
+      unloadMessagesRef.current();
+    };
+  }, [masterId, subscriberId]);
+
+  const prevMessagesLenRef = useRef(0);
 
   useEffect(() => {
     if (messages.length > 0 && !hasScrolledRef.current) {
@@ -171,16 +185,13 @@ export default function ChatScreen() {
       setTimeout(() => {
         flatListRef.current?.scrollToEnd({ animated: false });
       }, 100);
-    }
-  }, [messages.length]);
-
-  useEffect(() => {
-    if (messages.length > 0 && hasScrolledRef.current) {
+    } else if (messages.length > prevMessagesLenRef.current && hasScrolledRef.current) {
       setTimeout(() => {
         flatListRef.current?.scrollToEnd({ animated: true });
       }, 50);
     }
-  }, [messages]);
+    prevMessagesLenRef.current = messages.length;
+  }, [messages.length]);
 
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -202,9 +213,9 @@ export default function ChatScreen() {
 
   useEffect(() => {
     if (masterId && subscriberId && messages.length > 0) {
-      markChatAsRead(masterId, subscriberId);
+      markChatAsReadRef.current(masterId, subscriberId);
     }
-  }, [messages, masterId, subscriberId, markChatAsRead]);
+  }, [messages.length, masterId, subscriberId]);
 
   const handleSend = useCallback(async () => {
     const trimmed = text.trim();

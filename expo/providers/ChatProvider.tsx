@@ -33,12 +33,15 @@ interface ChatContextType {
   chats: ChatDialog[];
   messages: ChatMessage[];
   loadMessages: (masterId: string, subscriberId: string) => void;
+  unloadMessages: () => void;
   sendMessage: (masterId: string, subscriberId: string, text: string) => Promise<void>;
+  deleteChat: (masterId: string, subscriberId: string) => Promise<void>;
   markChatAsRead: (masterId: string, subscriberId: string) => void;
   unreadMessagesCount: number;
   isLoadingChats: boolean;
   isLoadingMessages: boolean;
   isSending: boolean;
+  isDeleting: boolean;
   userId: string | null;
 }
 
@@ -57,6 +60,7 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
   const [isLoadingChats, setIsLoadingChats] = useState(false);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [readMessageIds, setReadMessageIds] = useState<Set<string>>(new Set());
   const messagesUnsubRef = useRef<(() => void) | null>(null);
   const chatsUnsubRef = useRef<(() => void) | null>(null);
@@ -64,6 +68,8 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
   const prevMessageIdsRef = useRef<Set<string>>(new Set());
   const prevGlobalMsgIdsRef = useRef<Set<string>>(new Set());
   const activeLoadedChatRef = useRef<string | null>(null);
+  const globalInitializedRef = useRef(false);
+  const chatsInitializedRef = useRef(false);
 
   useEffect(() => {
     setUserId(commentsUserId);
@@ -152,13 +158,17 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
             }
           });
 
-          if (prevGlobalMsgIdsRef.current.size > 0 && freshMessages.length > 0 && Platform.OS !== 'web') {
+          console.log('[Chat] Global messages snapshot: total=', snapshot.docs.length, 'fresh=', freshMessages.length, 'prevSize=', prevGlobalMsgIdsRef.current.size, 'initialized=', globalInitializedRef.current);
+
+          if (globalInitializedRef.current && freshMessages.length > 0 && Platform.OS !== 'web') {
+            console.log('[Chat] Scheduling', Math.min(freshMessages.length, 3), 'chat notifications');
             for (const m of freshMessages.slice(0, 3)) {
               Notifications.scheduleNotificationAsync({
                 content: {
                   title: `${m.senderName}`,
                   body: m.text.substring(0, 100),
-                  data: { type: 'chat', masterId: m.masterId, subscriberId: m.subscriberId },
+                  data: { type: 'chat', masterId: m.masterId, subscriberId: m.subscriberId, senderName: m.senderName },
+                  ...(Platform.OS === 'android' ? { channelId: 'chat_channel' } : {}),
                 },
                 trigger: null,
               }).catch((err) => {
@@ -167,6 +177,9 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
             }
           }
 
+          if (!globalInitializedRef.current) {
+            globalInitializedRef.current = true;
+          }
           prevGlobalMsgIdsRef.current = newIds;
         },
         (error) => {
@@ -266,6 +279,16 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
     return count;
   }, [chats, userId, relevantMasterIds]);
 
+  const unloadMessages = useCallback(() => {
+    console.log('[Chat] Unloading messages, clearing active chat ref');
+    if (messagesUnsubRef.current) {
+      messagesUnsubRef.current();
+      messagesUnsubRef.current = null;
+    }
+    activeLoadedChatRef.current = null;
+    setMessages([]);
+  }, []);
+
   const loadMessages = useCallback((masterId: string, subscriberId: string) => {
     console.log('[Chat] Loading messages for master:', masterId, 'subscriber:', subscriberId);
     activeLoadedChatRef.current = `${masterId}_${subscriberId}`;
@@ -352,6 +375,19 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
 
       console.log('[Chat] Sending message:', { masterId, subscriberId, senderId: userId, senderName: resolvedName });
 
+      const optimisticId = 'opt_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
+      const optimisticMsg: ChatMessage = {
+        id: optimisticId,
+        masterId,
+        subscriberId,
+        text,
+        senderId: userId,
+        senderName: resolvedName,
+        createdAt: Date.now(),
+        isRead: false,
+      };
+      setMessages(prev => [...prev, optimisticMsg]);
+
       try {
         await addDoc(collection(firestore, 'messages'), {
           masterId,
@@ -366,9 +402,11 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
         const errMsg = msgErr instanceof Error ? msgErr.message : String(msgErr);
         console.log('[Chat] Failed to add message doc:', errMsg);
         if (errMsg.includes('permission') || errMsg.includes('Permission')) {
+          setMessages(prev => prev.filter(m => m.id !== optimisticId));
           Alert.alert('Ошибка доступа', 'Нет прав для отправки сообщений. Попросите мастера настроить правила Firebase (Firestore Rules) для коллекций messages и chats.');
           return;
         }
+        setMessages(prev => prev.filter(m => m.id !== optimisticId));
         throw msgErr;
       }
 
@@ -411,11 +449,41 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       console.log('[Chat] sendMessage error:', msg);
+      setMessages(prev => prev.filter(m => m.id !== optimisticId));
       Alert.alert('Ошибка', msg || 'Не удалось отправить сообщение');
     } finally {
       setIsSending(false);
     }
   }, [userId, userEmail, displayName, isSubscriberProfile, subscriptions, activeProfileId]);
+
+  const deleteChat = useCallback(async (masterId: string, subscriberId: string) => {
+    console.log('[Chat] Deleting chat:', masterId, subscriberId);
+    setIsDeleting(true);
+    try {
+      const chatDocId = getChatDocId(masterId, subscriberId);
+      const chatRef = doc(firestore, 'chats', chatDocId);
+
+      const messagesQuery = query(
+        collection(firestore, 'messages'),
+        where('masterId', '==', masterId),
+        where('subscriberId', '==', subscriberId)
+      );
+      const messagesSnap = await getDocs(messagesQuery);
+      const batch = writeBatch(firestore);
+      messagesSnap.docs.forEach((d) => {
+        batch.delete(d.ref);
+      });
+      batch.delete(chatRef);
+      await batch.commit();
+      console.log('[Chat] Chat deleted, removed', messagesSnap.docs.length, 'messages');
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.log('[Chat] deleteChat error:', msg);
+      Alert.alert('Ошибка', 'Не удалось удалить чат: ' + msg);
+    } finally {
+      setIsDeleting(false);
+    }
+  }, []);
 
   const markChatAsRead = useCallback((masterId: string, subscriberId: string) => {
     if (!userId) return;
@@ -459,12 +527,15 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
     chats,
     messages,
     loadMessages,
+    unloadMessages,
     sendMessage,
+    deleteChat,
     markChatAsRead,
     unreadMessagesCount,
     isLoadingChats,
     isLoadingMessages,
     isSending,
+    isDeleting,
     userId,
-  }), [chats, messages, loadMessages, sendMessage, markChatAsRead, unreadMessagesCount, isLoadingChats, isLoadingMessages, isSending, userId]);
+  }), [chats, messages, loadMessages, unloadMessages, sendMessage, deleteChat, markChatAsRead, unreadMessagesCount, isLoadingChats, isLoadingMessages, isSending, isDeleting, userId]);
 });

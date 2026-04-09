@@ -21,6 +21,27 @@ if (Platform.OS !== 'web') {
   });
 }
 
+export async function setupNotificationChannels(): Promise<void> {
+  if (Platform.OS !== 'android') return;
+  try {
+    await Notifications.setNotificationChannelAsync('comments_channel', {
+      name: 'Комментарии',
+      importance: Notifications.AndroidImportance.HIGH,
+      vibrationPattern: [0, 250, 250, 250],
+      sound: 'default',
+    });
+    await Notifications.setNotificationChannelAsync('chat_channel', {
+      name: 'Чат',
+      importance: Notifications.AndroidImportance.HIGH,
+      vibrationPattern: [0, 250, 250, 250],
+      sound: 'default',
+    });
+    console.log('[Notifications] Android channels created');
+  } catch (err) {
+    console.log('[Notifications] Error creating channels:', err);
+  }
+}
+
 export async function requestNotificationPermissions(): Promise<boolean> {
   if (Platform.OS === 'web') {
     console.log('[Notifications] Web platform, skipping permissions');

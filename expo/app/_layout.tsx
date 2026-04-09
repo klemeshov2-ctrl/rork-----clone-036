@@ -20,7 +20,7 @@ import { SyncPanelProvider } from "@/providers/SyncPanelProvider";
 import { PinAuth } from "@/components/PinAuth";
 import { initLogger } from "@/lib/logger";
 import { db } from "@/config/firebase";
-import { requestNotificationPermissions } from "@/lib/notifications";
+import { requestNotificationPermissions, setupNotificationChannels } from "@/lib/notifications";
 import { ActivityIndicator, Platform, View, Image, Text, StyleSheet } from "react-native";
 import * as Notifications from 'expo-notifications';
 import { useRouter } from 'expo-router';
@@ -182,6 +182,7 @@ export default function RootLayout() {
     void initLogger();
     console.log('[Firebase] DB ready:', !!db);
     void requestNotificationPermissions();
+    void setupNotificationChannels();
     void SplashScreen.hideAsync();
   }, []);
 

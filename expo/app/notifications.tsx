@@ -7,8 +7,9 @@ import {
   TouchableOpacity,
   Animated,
   Alert,
+  Modal,
 } from 'react-native';
-import { Check, ChevronRight, MessageCircle, MessageSquare, Plus } from 'lucide-react-native';
+import { Check, ChevronRight, MessageCircle, MessageSquare, Plus, Trash2, Users, X } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { Stack } from 'expo-router';
 import { useThemeColors } from '@/providers/ThemeProvider';
@@ -18,7 +19,7 @@ import { useChat } from '@/providers/ChatProvider';
 import { useObjects } from '@/providers/ObjectsProvider';
 import { useBackup } from '@/providers/BackupProvider';
 import { useProfile } from '@/providers/ProfileProvider';
-import type { Comment, CommentEntityType, ChatDialog, MasterSubscription } from '@/types';
+import type { Comment, CommentEntityType, ChatDialog, MasterSubscription, FirestoreSubscription } from '@/types';
 
 function formatDate(ts: number): string {
   const d = new Date(ts);
@@ -108,11 +109,15 @@ function ChatCard({
   colors,
   userId,
   onPress,
+  onDelete,
+  isMasterUser,
 }: {
   chat: ChatDialog;
   colors: ThemeColors;
   userId: string | null;
   onPress: () => void;
+  onDelete?: () => void;
+  isMasterUser: boolean;
 }) {
   const isMaster = chat.masterId === userId;
   const partnerName = isMaster ? chat.subscriberName : chat.masterName;
@@ -131,6 +136,7 @@ function ChatCard({
         borderLeftColor: hasUnread ? colors.info : colors.border,
       }}
       onPress={onPress}
+      onLongPress={isMasterUser && onDelete ? onDelete : undefined}
       activeOpacity={0.7}
     >
       <View style={{ flexDirection: 'row' as const, alignItems: 'center' as const, marginBottom: 6 }}>
@@ -150,21 +156,39 @@ function ChatCard({
             <Text style={{ fontSize: 15, fontWeight: '600' as const, color: colors.text }} numberOfLines={1}>
               {partnerName}
             </Text>
-            {hasUnread && (
-              <View style={{
-                backgroundColor: colors.info,
-                borderRadius: 10,
-                minWidth: 20,
-                height: 20,
-                alignItems: 'center' as const,
-                justifyContent: 'center' as const,
-                paddingHorizontal: 6,
-              }}>
-                <Text style={{ fontSize: 11, fontWeight: '700' as const, color: '#fff' }}>
-                  {chat.unreadCount > 99 ? '99+' : chat.unreadCount}
-                </Text>
-              </View>
-            )}
+            <View style={{ flexDirection: 'row' as const, alignItems: 'center' as const, gap: 6 }}>
+              {hasUnread && (
+                <View style={{
+                  backgroundColor: colors.info,
+                  borderRadius: 10,
+                  minWidth: 20,
+                  height: 20,
+                  alignItems: 'center' as const,
+                  justifyContent: 'center' as const,
+                  paddingHorizontal: 6,
+                }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700' as const, color: '#fff' }}>
+                    {chat.unreadCount > 99 ? '99+' : chat.unreadCount}
+                  </Text>
+                </View>
+              )}
+              {isMasterUser && onDelete && (
+                <TouchableOpacity
+                  onPress={onDelete}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 14,
+                    backgroundColor: colors.error + '15',
+                    alignItems: 'center' as const,
+                    justifyContent: 'center' as const,
+                  }}
+                >
+                  <Trash2 size={14} color={colors.error} />
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
           <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 2 }} numberOfLines={1}>
             {chat.lastMessage || 'Нет сообщений'}
@@ -183,7 +207,7 @@ export default function NotificationsScreen() {
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { unreadComments, markAsRead, markAllAsRead, unreadCount: commentUnreadCount, userId: commentsUserId } = useComments();
-  const { chats, unreadMessagesCount, userId: chatUserId, sendMessage } = useChat();
+  const { chats, unreadMessagesCount, userId: chatUserId, sendMessage, deleteChat, isDeleting } = useChat();
   const { getWorkEntry } = useObjects();
   const { subscriptions, masterId: backupMasterId } = useBackup();
   const { isSubscriberProfile, activeProfileId } = useProfile();
@@ -249,6 +273,8 @@ export default function NotificationsScreen() {
   }, [markAllAsRead]);
 
   const currentUserId = chatUserId || commentsUserId;
+  const { firestoreSubscribers } = useBackup();
+  const [subscriberPickerVisible, setSubscriberPickerVisible] = useState(false);
 
   const activeSubscription = useMemo(() => {
     if (isSubscriberProfile) {
@@ -256,14 +282,6 @@ export default function NotificationsScreen() {
     }
     return null;
   }, [isSubscriberProfile, activeProfileId, subscriptions]);
-
-  const canStartChat = useMemo(() => {
-    if (!currentUserId) return false;
-    if (isSubscriberProfile) {
-      return !!activeSubscription?.masterId;
-    }
-    return subscriptions.length > 0 || chats.length > 0;
-  }, [currentUserId, isSubscriberProfile, activeSubscription, subscriptions, chats]);
 
   const handleStartNewChat = useCallback(() => {
     if (!currentUserId) {
@@ -282,18 +300,49 @@ export default function NotificationsScreen() {
           },
         });
       } else {
-        Alert.alert('Нет контактов', 'Сначала добавьте подписку на мастера в разделе синхронизации.');
+        Alert.alert('Ошибка', 'Недействительная ссылка мастера. Проверьте подписку и попробуйте снова.');
       }
     } else {
-      if (chats.length > 0) {
-        Alert.alert('Подсказка', 'Ваши подписчики могут начать чат с вами. Когда они напишут, чат появится здесь.');
-      } else {
-        Alert.alert('Подсказка', 'Чаты создаются подписчиками. Когда подписчик напишет вам, чат появится здесь автоматически.');
+      if (!firestoreSubscribers || firestoreSubscribers.length === 0) {
+        Alert.alert('Нет подписчиков', 'Вы не можете начать чат, пока у вас нет подписчиков.');
+        return;
       }
+      setSubscriberPickerVisible(true);
     }
-  }, [currentUserId, isSubscriberProfile, activeSubscription, router, chats]);
+  }, [currentUserId, isSubscriberProfile, activeSubscription, router, firestoreSubscribers]);
 
+  const handleSelectSubscriber = useCallback((subscriber: FirestoreSubscription) => {
+    setSubscriberPickerVisible(false);
+    if (!currentUserId) return;
+    router.push({
+      pathname: '/chat' as any,
+      params: {
+        masterId: currentUserId,
+        subscriberId: subscriber.subscriberId,
+        partnerName: subscriber.subscriberName || 'Подписчик',
+      },
+    });
+  }, [currentUserId, router]);
 
+  const handleDeleteChat = useCallback((chat: ChatDialog) => {
+    const pName = chat.masterId === chatUserId ? chat.subscriberName : chat.masterName;
+    Alert.alert(
+      'Удалить чат',
+      `Удалить чат с ${pName}? Все сообщения будут удалены.`,
+      [
+        { text: 'Отмена', style: 'cancel' },
+        {
+          text: 'Удалить',
+          style: 'destructive',
+          onPress: () => {
+            deleteChat(chat.masterId, chat.subscriberId);
+          },
+        },
+      ]
+    );
+  }, [chatUserId, deleteChat]);
+
+  const isMasterUser = !isSubscriberProfile;
 
   const renderCommentItem = useCallback(({ item }: { item: Comment }) => (
     <UnreadCommentCard
@@ -309,8 +358,10 @@ export default function NotificationsScreen() {
       colors={colors}
       userId={chatUserId}
       onPress={() => navigateToChat(item)}
+      onDelete={isMasterUser ? () => handleDeleteChat(item) : undefined}
+      isMasterUser={isMasterUser}
     />
-  ), [colors, chatUserId, navigateToChat]);
+  ), [colors, chatUserId, navigateToChat, isMasterUser, handleDeleteChat]);
 
   const commentKeyExtractor = useCallback((item: Comment) => item.id, []);
   const chatKeyExtractor = useCallback((item: ChatDialog) => item.id, []);
@@ -399,6 +450,58 @@ export default function NotificationsScreen() {
         </>
       ) : (
         <>
+          <Modal
+            visible={subscriberPickerVisible}
+            animationType="slide"
+            transparent
+            onRequestClose={() => setSubscriberPickerVisible(false)}
+          >
+            <View style={styles.pickerOverlay}>
+              <View style={styles.pickerSheet}>
+                <View style={styles.pickerHeader}>
+                  <View style={styles.pickerHeaderLeft}>
+                    <Users size={18} color={colors.primary} />
+                    <Text style={styles.pickerTitle}>Выберите подписчика</Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.pickerCloseBtn}
+                    onPress={() => setSubscriberPickerVisible(false)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <X size={18} color={colors.textMuted} />
+                  </TouchableOpacity>
+                </View>
+                <FlatList
+                  data={firestoreSubscribers}
+                  keyExtractor={(item) => item.id}
+                  contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 20 }}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      style={styles.subscriberItem}
+                      onPress={() => handleSelectSubscriber(item)}
+                      activeOpacity={0.7}
+                    >
+                      <View style={styles.subscriberAvatar}>
+                        <Text style={styles.subscriberAvatarText}>
+                          {(item.subscriberName?.[0] || '?').toUpperCase()}
+                        </Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.subscriberName}>{item.subscriberName || 'Подписчик'}</Text>
+                      </View>
+                      <ChevronRight size={16} color={colors.textMuted} />
+                    </TouchableOpacity>
+                  )}
+                  ListEmptyComponent={
+                    <View style={styles.emptyContainer}>
+                      <Text style={styles.emptySubtext}>Нет подписчиков</Text>
+                    </View>
+                  }
+                />
+              </View>
+            </View>
+          </Modal>
+
           {chats.length === 0 ? (
             <View style={styles.emptyContainer}>
               <MessageCircle size={48} color={colors.textMuted} />
@@ -406,7 +509,7 @@ export default function NotificationsScreen() {
               <Text style={styles.emptySubtext}>
                 {isSubscriberProfile
                   ? 'Напишите мастеру, чтобы начать общение'
-                  : 'Когда подписчик напишет вам, чат появится здесь'}
+                  : 'Выберите подписчика, чтобы начать чат'}
               </Text>
               <TouchableOpacity
                 style={styles.startChatBtn}
@@ -426,19 +529,15 @@ export default function NotificationsScreen() {
                 contentContainerStyle={styles.listContent}
                 showsVerticalScrollIndicator={false}
               />
-              {isSubscriberProfile && (
-                <TouchableOpacity
-                  style={styles.fab}
-                  onPress={handleStartNewChat}
-                  activeOpacity={0.7}
-                >
-                  <Plus size={22} color="#fff" />
-                </TouchableOpacity>
-              )}
+              <TouchableOpacity
+                style={styles.fab}
+                onPress={handleStartNewChat}
+                activeOpacity={0.7}
+              >
+                <Plus size={22} color="#fff" />
+              </TouchableOpacity>
             </View>
           )}
-
-
         </>
       )}
     </View>
@@ -562,18 +661,85 @@ function createStyles(colors: ThemeColors) {
       position: 'absolute',
       right: 20,
       bottom: 20,
-      width: 52,
-      height: 52,
-      borderRadius: 26,
+      width: 56,
+      height: 56,
+      borderRadius: 28,
       backgroundColor: colors.primary,
       alignItems: 'center',
       justifyContent: 'center',
-      elevation: 4,
+      elevation: 6,
       shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.25,
-      shadowRadius: 4,
+      shadowOffset: { width: 0, height: 3 },
+      shadowOpacity: 0.3,
+      shadowRadius: 5,
+      zIndex: 100,
     },
-
+    pickerOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      justifyContent: 'flex-end',
+    },
+    pickerSheet: {
+      backgroundColor: colors.background,
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      maxHeight: '60%',
+      paddingTop: 16,
+    },
+    pickerHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 20,
+      paddingBottom: 14,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+      marginBottom: 8,
+    },
+    pickerHeaderLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    pickerTitle: {
+      fontSize: 17,
+      fontWeight: '700' as const,
+      color: colors.text,
+    },
+    pickerCloseBtn: {
+      width: 34,
+      height: 34,
+      borderRadius: 17,
+      backgroundColor: colors.surface,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    subscriberItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 12,
+      paddingHorizontal: 4,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+      gap: 12,
+    },
+    subscriberAvatar: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: colors.primary + '20',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    subscriberAvatarText: {
+      fontSize: 16,
+      fontWeight: '700' as const,
+      color: colors.primary,
+    },
+    subscriberName: {
+      fontSize: 15,
+      fontWeight: '600' as const,
+      color: colors.text,
+    },
   });
 }

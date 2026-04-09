@@ -8,7 +8,7 @@ import {
   Alert,
   Modal,
 } from 'react-native';
-import { Check, ChevronRight, MessageCircle, MessageSquare, Plus, Users, X } from 'lucide-react-native';
+import { Check, ChevronRight, MessageCircle, MessageSquare, Plus, Trash2, Users, X } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useThemeColors } from '@/providers/ThemeProvider';
 import { ThemeColors } from '@/constants/colors';
@@ -107,11 +107,15 @@ function ChatCard({
   colors,
   userId,
   onPress,
+  onDelete,
+  isMasterUser,
 }: {
   chat: ChatDialog;
   colors: ThemeColors;
   userId: string | null;
   onPress: () => void;
+  onDelete?: () => void;
+  isMasterUser: boolean;
 }) {
   const isMaster = chat.masterId === userId;
   const partnerName = isMaster ? chat.subscriberName : chat.masterName;
@@ -130,6 +134,7 @@ function ChatCard({
         borderLeftColor: hasUnread ? colors.info : colors.border,
       }}
       onPress={onPress}
+      onLongPress={isMasterUser && onDelete ? onDelete : undefined}
       activeOpacity={0.7}
     >
       <View style={{ flexDirection: 'row' as const, alignItems: 'center' as const, marginBottom: 6 }}>
@@ -149,21 +154,39 @@ function ChatCard({
             <Text style={{ fontSize: 15, fontWeight: '600' as const, color: colors.text }} numberOfLines={1}>
               {partnerName}
             </Text>
-            {hasUnread && (
-              <View style={{
-                backgroundColor: colors.info,
-                borderRadius: 10,
-                minWidth: 20,
-                height: 20,
-                alignItems: 'center' as const,
-                justifyContent: 'center' as const,
-                paddingHorizontal: 6,
-              }}>
-                <Text style={{ fontSize: 11, fontWeight: '700' as const, color: '#fff' }}>
-                  {chat.unreadCount > 99 ? '99+' : chat.unreadCount}
-                </Text>
-              </View>
-            )}
+            <View style={{ flexDirection: 'row' as const, alignItems: 'center' as const, gap: 6 }}>
+              {hasUnread && (
+                <View style={{
+                  backgroundColor: colors.info,
+                  borderRadius: 10,
+                  minWidth: 20,
+                  height: 20,
+                  alignItems: 'center' as const,
+                  justifyContent: 'center' as const,
+                  paddingHorizontal: 6,
+                }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700' as const, color: '#fff' }}>
+                    {chat.unreadCount > 99 ? '99+' : chat.unreadCount}
+                  </Text>
+                </View>
+              )}
+              {isMasterUser && onDelete && (
+                <TouchableOpacity
+                  onPress={onDelete}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 14,
+                    backgroundColor: colors.error + '15',
+                    alignItems: 'center' as const,
+                    justifyContent: 'center' as const,
+                  }}
+                >
+                  <Trash2 size={14} color={colors.error} />
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
           <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 2 }} numberOfLines={1}>
             {chat.lastMessage || 'Нет сообщений'}
@@ -182,7 +205,7 @@ export default function NotificationsScreen() {
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { unreadComments, markAsRead, markAllAsRead, unreadCount: commentUnreadCount } = useComments();
-  const { chats, unreadMessagesCount, userId: chatUserId } = useChat();
+  const { chats, unreadMessagesCount, userId: chatUserId, deleteChat, isDeleting } = useChat();
   const { getWorkEntry } = useObjects();
   const { subscriptions } = useBackup();
   const { isSubscriberProfile, activeProfileId } = useProfile();
@@ -283,6 +306,24 @@ export default function NotificationsScreen() {
     });
   }, [router, chatUserId]);
 
+  const handleDeleteChat = useCallback((chat: ChatDialog) => {
+    const partnerName = chat.masterId === chatUserId ? chat.subscriberName : chat.masterName;
+    Alert.alert(
+      'Удалить чат',
+      `Удалить чат с ${partnerName}? Все сообщения будут удалены.`,
+      [
+        { text: 'Отмена', style: 'cancel' },
+        {
+          text: 'Удалить',
+          style: 'destructive',
+          onPress: () => {
+            deleteChat(chat.masterId, chat.subscriberId);
+          },
+        },
+      ]
+    );
+  }, [chatUserId, deleteChat]);
+
   const handleMarkAllRead = useCallback(() => {
     markAllAsRead();
   }, [markAllAsRead]);
@@ -295,14 +336,18 @@ export default function NotificationsScreen() {
     />
   ), [colors, navigateToComment]);
 
+  const isMasterUser = !isSubscriberProfile;
+
   const renderChatItem = useCallback(({ item }: { item: ChatDialog }) => (
     <ChatCard
       chat={item}
       colors={colors}
       userId={chatUserId}
       onPress={() => navigateToChat(item)}
+      onDelete={isMasterUser ? () => handleDeleteChat(item) : undefined}
+      isMasterUser={isMasterUser}
     />
-  ), [colors, chatUserId, navigateToChat]);
+  ), [colors, chatUserId, navigateToChat, isMasterUser, handleDeleteChat]);
 
   const commentKeyExtractor = useCallback((item: Comment) => item.id, []);
   const chatKeyExtractor = useCallback((item: ChatDialog) => item.id, []);

@@ -61,6 +61,7 @@ export const [CommentsProvider, useComments] = createContextHook<CommentsContext
   const [allComments, setAllComments] = useState<Comment[]>([]);
   const [readCommentIds, setReadCommentIds] = useState<Set<string>>(new Set());
   const prevCommentIdsRef = useRef<Set<string>>(new Set());
+  const commentsInitializedRef = useRef(false);
 
   useEffect(() => {
     AsyncStorage.getItem(DISPLAY_NAME_KEY).then(stored => {
@@ -194,7 +195,10 @@ export const [CommentsProvider, useComments] = createContextHook<CommentsContext
             (!activeMasterId || !d.masterId || d.masterId === activeMasterId)
           );
 
-          if (prevIds.size > 0 && freshComments.length > 0 && Platform.OS !== 'web') {
+          console.log('[Comments] Global snapshot: total=', docs.length, 'fresh=', freshComments.length, 'prevSize=', prevIds.size, 'initialized=', commentsInitializedRef.current);
+
+          if (commentsInitializedRef.current && freshComments.length > 0 && Platform.OS !== 'web') {
+            console.log('[Comments] Scheduling', Math.min(freshComments.length, 3), 'comment notifications');
             for (const c of freshComments.slice(0, 3)) {
               const entityLabel = c.entityType === 'work_entry' ? 'Запись работ'
                 : c.entityType === 'inventory' ? 'Склад'
@@ -205,6 +209,7 @@ export const [CommentsProvider, useComments] = createContextHook<CommentsContext
                   title: `${authorLabel} — ${entityLabel}`,
                   body: c.text.substring(0, 100),
                   data: { commentId: c.id, entityType: c.entityType, entityId: c.entityId },
+                  ...(Platform.OS === 'android' ? { channelId: 'comments_channel' } : {}),
                 },
                 trigger: null,
               }).catch((err) => {
@@ -213,6 +218,9 @@ export const [CommentsProvider, useComments] = createContextHook<CommentsContext
             }
           }
 
+          if (!commentsInitializedRef.current) {
+            commentsInitializedRef.current = true;
+          }
           prevCommentIdsRef.current = newIds;
           setAllComments(docs);
           console.log('[Comments] Global subscription: received', docs.length, 'comments');
