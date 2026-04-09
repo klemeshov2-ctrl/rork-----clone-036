@@ -115,17 +115,21 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
 
   useEffect(() => {
     if (!userId) return;
-    console.log('[Chat] Setting up global messages listener for notifications');
+    const masterIdsForQuery = relevantMasterIds.length > 0 ? relevantMasterIds.slice(0, 30) : [userId];
+    console.log('[Chat] Setting up global messages listener for notifications, masterIds:', masterIdsForQuery);
 
     if (globalMsgUnsubRef.current) {
       globalMsgUnsubRef.current();
       globalMsgUnsubRef.current = null;
     }
 
+    globalInitializedRef.current = false;
+    prevGlobalMsgIdsRef.current = new Set();
+
     try {
       const q = query(
         collection(firestore, 'messages'),
-        where('masterId', 'in', relevantMasterIds.length > 0 ? relevantMasterIds.slice(0, 30) : [userId]),
+        where('masterId', 'in', masterIdsForQuery),
         orderBy('createdAt', 'desc'),
         limit(50)
       );
@@ -140,6 +144,7 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
             const data = d.data();
             newIds.add(d.id);
             if (
+              prevGlobalMsgIdsRef.current.size > 0 &&
               !prevGlobalMsgIdsRef.current.has(d.id) &&
               typeof data.senderId === 'string' &&
               data.senderId !== userId
@@ -160,7 +165,7 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
 
           console.log('[Chat] Global messages snapshot: total=', snapshot.docs.length, 'fresh=', freshMessages.length, 'prevSize=', prevGlobalMsgIdsRef.current.size, 'initialized=', globalInitializedRef.current);
 
-          if (globalInitializedRef.current && freshMessages.length > 0 && Platform.OS !== 'web') {
+          if (freshMessages.length > 0 && Platform.OS !== 'web') {
             console.log('[Chat] Scheduling', Math.min(freshMessages.length, 3), 'chat notifications');
             for (const m of freshMessages.slice(0, 3)) {
               Notifications.scheduleNotificationAsync({
@@ -369,25 +374,25 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
     }
 
     setIsSending(true);
+    const resolvedName = displayName || userEmail || 'Аноним';
+    const isMaster = !isSubscriberProfile;
+    const optimisticId = 'opt_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
+
+    console.log('[Chat] Sending message:', { masterId, subscriberId, senderId: userId, senderName: resolvedName });
+
+    const optimisticMsg: ChatMessage = {
+      id: optimisticId,
+      masterId,
+      subscriberId,
+      text,
+      senderId: userId,
+      senderName: resolvedName,
+      createdAt: Date.now(),
+      isRead: false,
+    };
+    setMessages(prev => [...prev, optimisticMsg]);
+
     try {
-      const resolvedName = displayName || userEmail || 'Аноним';
-      const isMaster = !isSubscriberProfile;
-
-      console.log('[Chat] Sending message:', { masterId, subscriberId, senderId: userId, senderName: resolvedName });
-
-      const optimisticId = 'opt_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
-      const optimisticMsg: ChatMessage = {
-        id: optimisticId,
-        masterId,
-        subscriberId,
-        text,
-        senderId: userId,
-        senderName: resolvedName,
-        createdAt: Date.now(),
-        isRead: false,
-      };
-      setMessages(prev => [...prev, optimisticMsg]);
-
       try {
         await addDoc(collection(firestore, 'messages'), {
           masterId,
@@ -398,6 +403,7 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
           createdAt: serverTimestamp(),
           isRead: false,
         });
+        console.log('[Chat] Message doc added to Firestore');
       } catch (msgErr: unknown) {
         const errMsg = msgErr instanceof Error ? msgErr.message : String(msgErr);
         console.log('[Chat] Failed to add message doc:', errMsg);
@@ -440,12 +446,18 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
             unreadCount: 1,
           });
         }
+        console.log('[Chat] Chat doc updated/created');
       } catch (chatErr: unknown) {
         const errMsg = chatErr instanceof Error ? chatErr.message : String(chatErr);
         console.log('[Chat] Failed to update chat doc (non-critical):', errMsg);
       }
 
-      console.log('[Chat] Message sent successfully');
+      console.log('[Chat] Message sent successfully, checking onSnapshot is active:', !!messagesUnsubRef.current);
+
+      if (!messagesUnsubRef.current) {
+        console.log('[Chat] onSnapshot not active, force reloading messages');
+        loadMessages(masterId, subscriberId);
+      }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       console.log('[Chat] sendMessage error:', msg);
@@ -454,7 +466,7 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
     } finally {
       setIsSending(false);
     }
-  }, [userId, userEmail, displayName, isSubscriberProfile, subscriptions, activeProfileId]);
+  }, [userId, userEmail, displayName, isSubscriberProfile, subscriptions, activeProfileId, loadMessages]);
 
   const deleteChat = useCallback(async (masterId: string, subscriberId: string) => {
     console.log('[Chat] Deleting chat:', masterId, subscriberId);

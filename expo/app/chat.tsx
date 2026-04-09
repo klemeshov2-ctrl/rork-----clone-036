@@ -170,6 +170,8 @@ export default function ChatScreen() {
       console.log('[ChatScreen] Loading messages for:', masterId, subscriberId);
       loadMessagesRef.current(masterId, subscriberId);
       markChatAsReadRef.current(masterId, subscriberId);
+    } else {
+      console.log('[ChatScreen] Missing params - masterId:', masterId, 'subscriberId:', subscriberId);
     }
     return () => {
       console.log('[ChatScreen] Unmounting, unloading messages');

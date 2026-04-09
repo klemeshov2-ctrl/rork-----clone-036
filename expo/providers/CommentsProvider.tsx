@@ -143,6 +143,10 @@ export const [CommentsProvider, useComments] = createContextHook<CommentsContext
   useEffect(() => {
     if (!userId) return;
     console.log('[Comments] Setting up global comments subscription, relevantMasterIds:', relevantMasterIds);
+
+    commentsInitializedRef.current = false;
+    prevCommentIdsRef.current = new Set();
+
     try {
       let q;
       if (relevantMasterIds.length > 0 && relevantMasterIds.length <= 30) {
@@ -164,14 +168,14 @@ export const [CommentsProvider, useComments] = createContextHook<CommentsContext
         q,
         (snapshot) => {
           const docs: Comment[] = [];
-          snapshot.docs.forEach((doc) => {
-            const data = doc.data();
+          snapshot.docs.forEach((d) => {
+            const data = d.data();
             const createdAt = data.createdAt instanceof Timestamp
               ? data.createdAt.toMillis()
               : (typeof data.createdAt === 'number' ? data.createdAt : Date.now());
             const entityType = (typeof data.entityType === 'string' ? data.entityType : '') as CommentEntityType;
             docs.push({
-              id: doc.id,
+              id: d.id,
               entityType,
               entityId: typeof data.entityId === 'string' ? data.entityId : '',
               userId: typeof data.userId === 'string' ? data.userId : '',
@@ -186,18 +190,19 @@ export const [CommentsProvider, useComments] = createContextHook<CommentsContext
             });
           });
 
-          const newIds = new Set(docs.map(d => d.id));
+          const newIds = new Set(docs.map(c => c.id));
           const prevIds = prevCommentIdsRef.current;
-          const freshComments = docs.filter(d =>
-            !prevIds.has(d.id) &&
-            d.userId !== userId &&
-            (d.authorId ? d.authorId !== userId : true) &&
-            (!activeMasterId || !d.masterId || d.masterId === activeMasterId)
+          const freshComments = docs.filter(c =>
+            prevIds.size > 0 &&
+            !prevIds.has(c.id) &&
+            c.userId !== userId &&
+            (c.authorId ? c.authorId !== userId : true) &&
+            (!activeMasterId || !c.masterId || c.masterId === activeMasterId)
           );
 
           console.log('[Comments] Global snapshot: total=', docs.length, 'fresh=', freshComments.length, 'prevSize=', prevIds.size, 'initialized=', commentsInitializedRef.current);
 
-          if (commentsInitializedRef.current && freshComments.length > 0 && Platform.OS !== 'web') {
+          if (freshComments.length > 0 && Platform.OS !== 'web') {
             console.log('[Comments] Scheduling', Math.min(freshComments.length, 3), 'comment notifications');
             for (const c of freshComments.slice(0, 3)) {
               const entityLabel = c.entityType === 'work_entry' ? 'Запись работ'
