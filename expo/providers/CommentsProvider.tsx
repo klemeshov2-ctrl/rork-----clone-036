@@ -61,7 +61,7 @@ export const [CommentsProvider, useComments] = createContextHook<CommentsContext
   const [allComments, setAllComments] = useState<Comment[]>([]);
   const [readCommentIds, setReadCommentIds] = useState<Set<string>>(new Set());
   const prevCommentIdsRef = useRef<Set<string>>(new Set());
-  const commentsInitializedRef = useRef(false);
+
 
   useEffect(() => {
     AsyncStorage.getItem(DISPLAY_NAME_KEY).then(stored => {
@@ -144,7 +144,6 @@ export const [CommentsProvider, useComments] = createContextHook<CommentsContext
     if (!userId) return;
     console.log('[Comments] Setting up global comments subscription, relevantMasterIds:', relevantMasterIds);
 
-    commentsInitializedRef.current = false;
     prevCommentIdsRef.current = new Set();
 
     try {
@@ -200,7 +199,7 @@ export const [CommentsProvider, useComments] = createContextHook<CommentsContext
             (!activeMasterId || !c.masterId || c.masterId === activeMasterId)
           );
 
-          console.log('[Comments] Global snapshot: total=', docs.length, 'fresh=', freshComments.length, 'prevSize=', prevIds.size, 'initialized=', commentsInitializedRef.current);
+          console.log('[Comments] Global snapshot: total=', docs.length, 'fresh=', freshComments.length, 'prevSize=', prevIds.size);
 
           if (freshComments.length > 0 && Platform.OS !== 'web') {
             console.log('[Comments] Scheduling', Math.min(freshComments.length, 3), 'comment notifications');
@@ -223,9 +222,6 @@ export const [CommentsProvider, useComments] = createContextHook<CommentsContext
             }
           }
 
-          if (!commentsInitializedRef.current) {
-            commentsInitializedRef.current = true;
-          }
           prevCommentIdsRef.current = newIds;
           setAllComments(docs);
           console.log('[Comments] Global subscription: received', docs.length, 'comments');

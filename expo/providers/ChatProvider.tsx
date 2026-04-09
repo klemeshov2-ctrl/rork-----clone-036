@@ -68,8 +68,7 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
   const prevMessageIdsRef = useRef<Set<string>>(new Set());
   const prevGlobalMsgIdsRef = useRef<Set<string>>(new Set());
   const activeLoadedChatRef = useRef<string | null>(null);
-  const globalInitializedRef = useRef(false);
-  const chatsInitializedRef = useRef(false);
+
 
   useEffect(() => {
     setUserId(commentsUserId);
@@ -123,7 +122,6 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
       globalMsgUnsubRef.current = null;
     }
 
-    globalInitializedRef.current = false;
     prevGlobalMsgIdsRef.current = new Set();
 
     try {
@@ -163,7 +161,7 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
             }
           });
 
-          console.log('[Chat] Global messages snapshot: total=', snapshot.docs.length, 'fresh=', freshMessages.length, 'prevSize=', prevGlobalMsgIdsRef.current.size, 'initialized=', globalInitializedRef.current);
+          console.log('[Chat] Global messages snapshot: total=', snapshot.docs.length, 'fresh=', freshMessages.length, 'prevSize=', prevGlobalMsgIdsRef.current.size);
 
           if (freshMessages.length > 0 && Platform.OS !== 'web') {
             console.log('[Chat] Scheduling', Math.min(freshMessages.length, 3), 'chat notifications');
@@ -182,9 +180,6 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
             }
           }
 
-          if (!globalInitializedRef.current) {
-            globalInitializedRef.current = true;
-          }
           prevGlobalMsgIdsRef.current = newIds;
         },
         (error) => {
@@ -376,21 +371,8 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
     setIsSending(true);
     const resolvedName = displayName || userEmail || 'Аноним';
     const isMaster = !isSubscriberProfile;
-    const optimisticId = 'opt_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
 
     console.log('[Chat] Sending message:', { masterId, subscriberId, senderId: userId, senderName: resolvedName });
-
-    const optimisticMsg: ChatMessage = {
-      id: optimisticId,
-      masterId,
-      subscriberId,
-      text,
-      senderId: userId,
-      senderName: resolvedName,
-      createdAt: Date.now(),
-      isRead: false,
-    };
-    setMessages(prev => [...prev, optimisticMsg]);
 
     try {
       try {
@@ -408,11 +390,9 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
         const errMsg = msgErr instanceof Error ? msgErr.message : String(msgErr);
         console.log('[Chat] Failed to add message doc:', errMsg);
         if (errMsg.includes('permission') || errMsg.includes('Permission')) {
-          setMessages(prev => prev.filter(m => m.id !== optimisticId));
           Alert.alert('Ошибка доступа', 'Нет прав для отправки сообщений. Попросите мастера настроить правила Firebase (Firestore Rules) для коллекций messages и chats.');
           return;
         }
-        setMessages(prev => prev.filter(m => m.id !== optimisticId));
         throw msgErr;
       }
 
@@ -461,7 +441,6 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       console.log('[Chat] sendMessage error:', msg);
-      setMessages(prev => prev.filter(m => m.id !== optimisticId));
       Alert.alert('Ошибка', msg || 'Не удалось отправить сообщение');
     } finally {
       setIsSending(false);

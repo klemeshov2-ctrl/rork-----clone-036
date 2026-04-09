@@ -103,11 +103,11 @@ export function truncateText(text: string, maxLength: number): string {
 
 export async function compressImage(uri: string, maxWidth: number = 1280, quality: number = 0.7): Promise<string> {
   try {
-    const { manipulateAsync, SaveFormat } = await import('expo-image-manipulator');
-    const result = await manipulateAsync(
+    const ImageManipulator = require('expo-image-manipulator');
+    const result = await ImageManipulator.manipulateAsync(
       uri,
       [{ resize: { width: maxWidth } }],
-      { compress: quality, format: SaveFormat.JPEG }
+      { compress: quality, format: ImageManipulator.SaveFormat.JPEG }
     );
     console.log('[compressImage] Compressed:', uri, '->', result.uri);
     return result.uri;
