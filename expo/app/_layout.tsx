@@ -132,7 +132,7 @@ function AuthGate() {
     return (
       <View style={[loadingStyles.container, { backgroundColor: colors.background }]}>
         <Image
-          source={{ uri: 'https://pub-e001eb4506b145aa938b5d3badbff6a5.r2.dev/attachments/g1yojq340zz71w6pqf3ev' }}
+          source={{ uri: 'https://pub-e001eb4506b145aa938b5d3badbff6a5.r2.dev/attachments/10gmvv4g5zd8evsone5fr.png' }}
           style={loadingStyles.icon}
         />
         <Text style={[loadingStyles.title, { color: colors.text }]}>Журнал мастера</Text>
