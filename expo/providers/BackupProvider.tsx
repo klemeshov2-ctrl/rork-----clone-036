@@ -1872,6 +1872,22 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
 
     if (accessToken) {
       try {
+        console.log('[Backup] Ensuring sync folder exists for master_info.json...');
+        await ensureFolderYandex(accessToken, SYNC_FOLDER);
+        const currentMasterId = masterId || firebaseUid || auth.currentUser?.uid || 'unknown';
+        const masterInfo = {
+          masterId: currentMasterId,
+          yandexUserId: yandexUserId || null,
+          email: userEmail || '',
+          updatedAt: Date.now(),
+        };
+        await uploadTextFileYandex(accessToken, SYNC_FOLDER + '/master_info.json', JSON.stringify(masterInfo));
+        console.log('[Backup] master_info.json created for master mode, masterId:', currentMasterId);
+      } catch (e: any) {
+        console.log('[Backup] Failed to upload master_info.json (non-critical):', e?.message);
+      }
+
+      try {
         console.log('[Backup] Creating and publishing comments folder for master...');
         await ensureCommentsFolderYandex(accessToken);
         const commentsPublicUrl = await publishCommentsFolderYandex(accessToken);
@@ -1884,7 +1900,7 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
         console.log('[Backup] Failed to create/publish comments folder (non-critical):', e?.message);
       }
     }
-  }, [accessToken]);
+  }, [accessToken, masterId, firebaseUid, yandexUserId, userEmail]);
 
   const disableMasterModeInternal = useCallback(async () => {
     setIsMasterEnabled(false);
