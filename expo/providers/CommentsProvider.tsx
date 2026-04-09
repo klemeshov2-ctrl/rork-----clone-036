@@ -163,71 +163,103 @@ export const [CommentsProvider, useComments] = createContextHook<CommentsContext
         );
       }
 
+      const parseGlobalDocs = (snapshotDocs: Array<{ id: string; data: () => Record<string, unknown> }>): Comment[] => {
+        const docs: Comment[] = [];
+        snapshotDocs.forEach((d) => {
+          const data = d.data();
+          const createdAt = data.createdAt instanceof Timestamp
+            ? data.createdAt.toMillis()
+            : (typeof data.createdAt === 'number' ? data.createdAt : Date.now());
+          const entityType = (typeof data.entityType === 'string' ? data.entityType : '') as CommentEntityType;
+          docs.push({
+            id: d.id,
+            entityType,
+            entityId: typeof data.entityId === 'string' ? data.entityId : '',
+            userId: typeof data.userId === 'string' ? data.userId : '',
+            userEmail: typeof data.userEmail === 'string' ? data.userEmail : '',
+            userName: typeof data.userName === 'string' ? data.userName : '',
+            text: typeof data.text === 'string' ? data.text : '',
+            createdAt,
+            masterId: typeof data.masterId === 'string' ? data.masterId : undefined,
+            authorId: typeof data.authorId === 'string' ? data.authorId : undefined,
+            authorName: typeof data.authorName === 'string' ? data.authorName : undefined,
+            subscriberId: typeof data.subscriberId === 'string' ? data.subscriberId : undefined,
+          });
+        });
+        return docs;
+      };
+
+      const handleGlobalDocs = (docs: Comment[]) => {
+        const newIds = new Set(docs.map(c => c.id));
+        const prevIds = prevCommentIdsRef.current;
+        const freshComments = docs.filter(c =>
+          prevIds.size > 0 &&
+          !prevIds.has(c.id) &&
+          c.userId !== userId &&
+          (c.authorId ? c.authorId !== userId : true) &&
+          (!activeMasterId || !c.masterId || c.masterId === activeMasterId)
+        );
+
+        console.log('[Comments] Global snapshot: total=', docs.length, 'fresh=', freshComments.length, 'prevSize=', prevIds.size);
+
+        if (freshComments.length > 0 && Platform.OS !== 'web') {
+          console.log('[Comments] Scheduling', Math.min(freshComments.length, 3), 'comment notifications');
+          for (const c of freshComments.slice(0, 3)) {
+            const entityLabel = c.entityType === 'work_entry' ? 'Запись работ'
+              : c.entityType === 'inventory' ? 'Склад'
+              : c.entityType === 'task' ? 'Задача' : 'Комментарий';
+            const authorLabel = c.authorName || c.userName || 'Аноним';
+            Notifications.scheduleNotificationAsync({
+              content: {
+                title: `${authorLabel} — ${entityLabel}`,
+                body: c.text.substring(0, 100),
+                data: { commentId: c.id, entityType: c.entityType, entityId: c.entityId },
+                ...(Platform.OS === 'android' ? { channelId: 'comments_channel' } : {}),
+              },
+              trigger: null,
+            }).catch((err) => {
+              console.log('[Comments] Notification error:', err);
+            });
+          }
+        }
+
+        prevCommentIdsRef.current = newIds;
+        setAllComments(docs);
+        console.log('[Comments] Global subscription: received', docs.length, 'comments');
+      };
+
       const unsubscribe = onSnapshot(
         q,
         (snapshot) => {
-          const docs: Comment[] = [];
-          snapshot.docs.forEach((d) => {
-            const data = d.data();
-            const createdAt = data.createdAt instanceof Timestamp
-              ? data.createdAt.toMillis()
-              : (typeof data.createdAt === 'number' ? data.createdAt : Date.now());
-            const entityType = (typeof data.entityType === 'string' ? data.entityType : '') as CommentEntityType;
-            docs.push({
-              id: d.id,
-              entityType,
-              entityId: typeof data.entityId === 'string' ? data.entityId : '',
-              userId: typeof data.userId === 'string' ? data.userId : '',
-              userEmail: typeof data.userEmail === 'string' ? data.userEmail : '',
-              userName: typeof data.userName === 'string' ? data.userName : '',
-              text: typeof data.text === 'string' ? data.text : '',
-              createdAt,
-              masterId: typeof data.masterId === 'string' ? data.masterId : undefined,
-              authorId: typeof data.authorId === 'string' ? data.authorId : undefined,
-              authorName: typeof data.authorName === 'string' ? data.authorName : undefined,
-              subscriberId: typeof data.subscriberId === 'string' ? data.subscriberId : undefined,
-            });
-          });
-
-          const newIds = new Set(docs.map(c => c.id));
-          const prevIds = prevCommentIdsRef.current;
-          const freshComments = docs.filter(c =>
-            prevIds.size > 0 &&
-            !prevIds.has(c.id) &&
-            c.userId !== userId &&
-            (c.authorId ? c.authorId !== userId : true) &&
-            (!activeMasterId || !c.masterId || c.masterId === activeMasterId)
-          );
-
-          console.log('[Comments] Global snapshot: total=', docs.length, 'fresh=', freshComments.length, 'prevSize=', prevIds.size);
-
-          if (freshComments.length > 0 && Platform.OS !== 'web') {
-            console.log('[Comments] Scheduling', Math.min(freshComments.length, 3), 'comment notifications');
-            for (const c of freshComments.slice(0, 3)) {
-              const entityLabel = c.entityType === 'work_entry' ? 'Запись работ'
-                : c.entityType === 'inventory' ? 'Склад'
-                : c.entityType === 'task' ? 'Задача' : 'Комментарий';
-              const authorLabel = c.authorName || c.userName || 'Аноним';
-              Notifications.scheduleNotificationAsync({
-                content: {
-                  title: `${authorLabel} — ${entityLabel}`,
-                  body: c.text.substring(0, 100),
-                  data: { commentId: c.id, entityType: c.entityType, entityId: c.entityId },
-                  ...(Platform.OS === 'android' ? { channelId: 'comments_channel' } : {}),
-                },
-                trigger: null,
-              }).catch((err) => {
-                console.log('[Comments] Notification error:', err);
-              });
-            }
-          }
-
-          prevCommentIdsRef.current = newIds;
-          setAllComments(docs);
-          console.log('[Comments] Global subscription: received', docs.length, 'comments');
+          const docs = parseGlobalDocs(snapshot.docs as unknown as Array<{ id: string; data: () => Record<string, unknown> }>);
+          handleGlobalDocs(docs);
         },
-        (error) => {
-          console.log('[Comments] Global subscription error:', error?.message);
+        async (error) => {
+          const errMsg = error?.message || '';
+          const isIndexError = errMsg.includes('index') || errMsg.includes('Index');
+          const isPermError = errMsg.includes('permission') || errMsg.includes('Permission') || errMsg.includes('insufficient');
+          console.log('[Comments] Global subscription error:', errMsg, '| isIndex:', isIndexError, '| isPerm:', isPermError);
+          console.log('[Comments] Falling back to getDocs for global comments...');
+          try {
+            const fallbackQ = relevantMasterIds.length > 0 && relevantMasterIds.length <= 30
+              ? query(
+                  collection(firestore, 'comments'),
+                  where('masterId', 'in', relevantMasterIds),
+                  limit(200)
+                )
+              : query(
+                  collection(firestore, 'comments'),
+                  limit(200)
+                );
+            const snapshot = await getDocs(fallbackQ);
+            const docs = parseGlobalDocs(snapshot.docs as unknown as Array<{ id: string; data: () => Record<string, unknown> }>);
+            docs.sort((a, b) => b.createdAt - a.createdAt);
+            handleGlobalDocs(docs);
+            console.log('[Comments] getDocs fallback succeeded, got', docs.length, 'comments');
+          } catch (fallbackErr: unknown) {
+            const fbMsg = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
+            console.log('[Comments] getDocs fallback also failed:', fbMsg);
+          }
         }
       );
       return () => unsubscribe();

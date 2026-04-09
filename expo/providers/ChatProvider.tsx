@@ -132,58 +132,77 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
         limit(50)
       );
 
-      const unsubscribe = onSnapshot(
-        q,
-        (snapshot) => {
-          const newIds = new Set<string>();
-          const freshMessages: Array<{ id: string; senderId: string; senderName: string; text: string; masterId: string; subscriberId: string }> = [];
+      const processGlobalSnapshot = (docs: Array<{ id: string; data: () => Record<string, unknown> }>) => {
+        const newIds = new Set<string>();
+        const freshMessages: Array<{ id: string; senderId: string; senderName: string; text: string; masterId: string; subscriberId: string }> = [];
 
-          snapshot.docs.forEach((d) => {
-            const data = d.data();
-            newIds.add(d.id);
-            if (
-              prevGlobalMsgIdsRef.current.size > 0 &&
-              !prevGlobalMsgIdsRef.current.has(d.id) &&
-              typeof data.senderId === 'string' &&
-              data.senderId !== userId
-            ) {
-              const chatKey = `${data.masterId}_${data.subscriberId}`;
-              if (activeLoadedChatRef.current !== chatKey) {
-                freshMessages.push({
-                  id: d.id,
-                  senderId: data.senderId as string,
-                  senderName: typeof data.senderName === 'string' ? data.senderName : 'Сообщение',
-                  text: typeof data.text === 'string' ? data.text : '',
-                  masterId: typeof data.masterId === 'string' ? data.masterId : '',
-                  subscriberId: typeof data.subscriberId === 'string' ? data.subscriberId : '',
-                });
-              }
-            }
-          });
-
-          console.log('[Chat] Global messages snapshot: total=', snapshot.docs.length, 'fresh=', freshMessages.length, 'prevSize=', prevGlobalMsgIdsRef.current.size);
-
-          if (freshMessages.length > 0 && Platform.OS !== 'web') {
-            console.log('[Chat] Scheduling', Math.min(freshMessages.length, 3), 'chat notifications');
-            for (const m of freshMessages.slice(0, 3)) {
-              Notifications.scheduleNotificationAsync({
-                content: {
-                  title: `${m.senderName}`,
-                  body: m.text.substring(0, 100),
-                  data: { type: 'chat', masterId: m.masterId, subscriberId: m.subscriberId, senderName: m.senderName },
-                  ...(Platform.OS === 'android' ? { channelId: 'chat_channel' } : {}),
-                },
-                trigger: null,
-              }).catch((err) => {
-                console.log('[Chat] Global notification error:', err);
+        docs.forEach((d) => {
+          const data = d.data();
+          newIds.add(d.id);
+          if (
+            prevGlobalMsgIdsRef.current.size > 0 &&
+            !prevGlobalMsgIdsRef.current.has(d.id) &&
+            typeof data.senderId === 'string' &&
+            data.senderId !== userId
+          ) {
+            const chatKey = `${data.masterId}_${data.subscriberId}`;
+            if (activeLoadedChatRef.current !== chatKey) {
+              freshMessages.push({
+                id: d.id,
+                senderId: data.senderId as string,
+                senderName: typeof data.senderName === 'string' ? data.senderName : 'Сообщение',
+                text: typeof data.text === 'string' ? data.text : '',
+                masterId: typeof data.masterId === 'string' ? data.masterId : '',
+                subscriberId: typeof data.subscriberId === 'string' ? data.subscriberId : '',
               });
             }
           }
+        });
 
-          prevGlobalMsgIdsRef.current = newIds;
+        console.log('[Chat] Global messages snapshot: total=', docs.length, 'fresh=', freshMessages.length, 'prevSize=', prevGlobalMsgIdsRef.current.size);
+
+        if (freshMessages.length > 0 && Platform.OS !== 'web') {
+          console.log('[Chat] Scheduling', Math.min(freshMessages.length, 3), 'chat notifications');
+          for (const m of freshMessages.slice(0, 3)) {
+            Notifications.scheduleNotificationAsync({
+              content: {
+                title: `${m.senderName}`,
+                body: m.text.substring(0, 100),
+                data: { type: 'chat', masterId: m.masterId, subscriberId: m.subscriberId, senderName: m.senderName },
+                ...(Platform.OS === 'android' ? { channelId: 'chat_channel' } : {}),
+              },
+              trigger: null,
+            }).catch((err) => {
+              console.log('[Chat] Global notification error:', err);
+            });
+          }
+        }
+
+        prevGlobalMsgIdsRef.current = newIds;
+      };
+
+      const unsubscribe = onSnapshot(
+        q,
+        (snapshot) => {
+          processGlobalSnapshot(snapshot.docs as unknown as Array<{ id: string; data: () => Record<string, unknown> }>);
         },
-        (error) => {
-          console.log('[Chat] Global messages listener error:', error?.message);
+        async (error) => {
+          const errMsg = error?.message || '';
+          console.log('[Chat] Global messages listener error:', errMsg, '| isIndex:', errMsg.includes('index') || errMsg.includes('Index'), '| isPerm:', errMsg.includes('permission') || errMsg.includes('insufficient'));
+          console.log('[Chat] Falling back to getDocs for global messages...');
+          try {
+            const fallbackQ = query(
+              collection(firestore, 'messages'),
+              where('masterId', 'in', masterIdsForQuery),
+              limit(50)
+            );
+            const snapshot = await getDocs(fallbackQ);
+            processGlobalSnapshot(snapshot.docs as unknown as Array<{ id: string; data: () => Record<string, unknown> }>);
+            console.log('[Chat] getDocs fallback for global messages succeeded, got', snapshot.docs.length);
+          } catch (fbErr: unknown) {
+            const fbMsg = fbErr instanceof Error ? fbErr.message : String(fbErr);
+            console.log('[Chat] getDocs fallback for global messages also failed:', fbMsg);
+          }
         }
       );
 
@@ -221,32 +240,54 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
         limit(100)
       );
 
+      const parseChatDocs = (snapshotDocs: Array<{ id: string; data: () => Record<string, unknown> }>): ChatDialog[] => {
+        const docs: ChatDialog[] = [];
+        snapshotDocs.forEach((d) => {
+          const data = d.data();
+          const lastMessageTime = data.lastMessageTime instanceof Timestamp
+            ? data.lastMessageTime.toMillis()
+            : (typeof data.lastMessageTime === 'number' ? data.lastMessageTime : Date.now());
+          docs.push({
+            id: d.id,
+            masterId: typeof data.masterId === 'string' ? data.masterId : '',
+            subscriberId: typeof data.subscriberId === 'string' ? data.subscriberId : '',
+            masterName: typeof data.masterName === 'string' ? data.masterName : 'Мастер',
+            subscriberName: typeof data.subscriberName === 'string' ? data.subscriberName : 'Подписчик',
+            lastMessage: typeof data.lastMessage === 'string' ? data.lastMessage : '',
+            lastMessageTime,
+            unreadCount: typeof data.unreadCount === 'number' ? data.unreadCount : 0,
+          });
+        });
+        return docs;
+      };
+
       const unsubscribe = onSnapshot(
         q,
         (snapshot) => {
-          const docs: ChatDialog[] = [];
-          snapshot.docs.forEach((d) => {
-            const data = d.data();
-            const lastMessageTime = data.lastMessageTime instanceof Timestamp
-              ? data.lastMessageTime.toMillis()
-              : (typeof data.lastMessageTime === 'number' ? data.lastMessageTime : Date.now());
-            docs.push({
-              id: d.id,
-              masterId: typeof data.masterId === 'string' ? data.masterId : '',
-              subscriberId: typeof data.subscriberId === 'string' ? data.subscriberId : '',
-              masterName: typeof data.masterName === 'string' ? data.masterName : 'Мастер',
-              subscriberName: typeof data.subscriberName === 'string' ? data.subscriberName : 'Подписчик',
-              lastMessage: typeof data.lastMessage === 'string' ? data.lastMessage : '',
-              lastMessageTime,
-              unreadCount: typeof data.unreadCount === 'number' ? data.unreadCount : 0,
-            });
-          });
+          const docs = parseChatDocs(snapshot.docs as unknown as Array<{ id: string; data: () => Record<string, unknown> }>);
           console.log('[Chat] Chats snapshot received:', docs.length);
           setChats(docs);
           setIsLoadingChats(false);
         },
-        (error) => {
-          console.log('[Chat] Chats subscription error:', error?.message);
+        async (error) => {
+          const errMsg = error?.message || '';
+          console.log('[Chat] Chats subscription error:', errMsg, '| isIndex:', errMsg.includes('index') || errMsg.includes('Index'), '| isPerm:', errMsg.includes('permission') || errMsg.includes('insufficient'));
+          console.log('[Chat] Falling back to getDocs for chats...');
+          try {
+            const fallbackQ = query(
+              collection(firestore, 'chats'),
+              where('participants', 'array-contains', userId),
+              limit(100)
+            );
+            const snapshot = await getDocs(fallbackQ);
+            const docs = parseChatDocs(snapshot.docs as unknown as Array<{ id: string; data: () => Record<string, unknown> }>);
+            docs.sort((a, b) => b.lastMessageTime - a.lastMessageTime);
+            console.log('[Chat] getDocs fallback for chats succeeded, got', docs.length);
+            setChats(docs);
+          } catch (fbErr: unknown) {
+            const fbMsg = fbErr instanceof Error ? fbErr.message : String(fbErr);
+            console.log('[Chat] getDocs fallback for chats also failed:', fbMsg);
+          }
           setIsLoadingChats(false);
         }
       );
@@ -310,34 +351,57 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
         limit(500)
       );
 
+      const parseMessageDocs = (snapshotDocs: Array<{ id: string; data: () => Record<string, unknown> }>): ChatMessage[] => {
+        const docs: ChatMessage[] = [];
+        snapshotDocs.forEach((d) => {
+          const data = d.data();
+          const createdAt = data.createdAt instanceof Timestamp
+            ? data.createdAt.toMillis()
+            : (typeof data.createdAt === 'number' ? data.createdAt : Date.now());
+          docs.push({
+            id: d.id,
+            masterId: typeof data.masterId === 'string' ? data.masterId : '',
+            subscriberId: typeof data.subscriberId === 'string' ? data.subscriberId : '',
+            text: typeof data.text === 'string' ? data.text : '',
+            senderId: typeof data.senderId === 'string' ? data.senderId : '',
+            senderName: typeof data.senderName === 'string' ? data.senderName : '',
+            createdAt,
+            isRead: typeof data.isRead === 'boolean' ? data.isRead : false,
+          });
+        });
+        return docs;
+      };
+
       const unsubscribe = onSnapshot(
         q,
         (snapshot) => {
-          const docs: ChatMessage[] = [];
-          snapshot.docs.forEach((d) => {
-            const data = d.data();
-            const createdAt = data.createdAt instanceof Timestamp
-              ? data.createdAt.toMillis()
-              : (typeof data.createdAt === 'number' ? data.createdAt : Date.now());
-            docs.push({
-              id: d.id,
-              masterId: typeof data.masterId === 'string' ? data.masterId : '',
-              subscriberId: typeof data.subscriberId === 'string' ? data.subscriberId : '',
-              text: typeof data.text === 'string' ? data.text : '',
-              senderId: typeof data.senderId === 'string' ? data.senderId : '',
-              senderName: typeof data.senderName === 'string' ? data.senderName : '',
-              createdAt,
-              isRead: typeof data.isRead === 'boolean' ? data.isRead : false,
-            });
-          });
-
+          const docs = parseMessageDocs(snapshot.docs as unknown as Array<{ id: string; data: () => Record<string, unknown> }>);
           prevMessageIdsRef.current = new Set(docs.map(d => d.id));
           console.log('[Chat] Messages snapshot received:', docs.length);
           setMessages(docs);
           setIsLoadingMessages(false);
         },
-        (error) => {
-          console.log('[Chat] Messages subscription error:', error?.message);
+        async (error) => {
+          const errMsg = error?.message || '';
+          console.log('[Chat] Messages subscription error:', errMsg, '| isIndex:', errMsg.includes('index') || errMsg.includes('Index'), '| isPerm:', errMsg.includes('permission') || errMsg.includes('insufficient'));
+          console.log('[Chat] Falling back to getDocs for messages...');
+          try {
+            const fallbackQ = query(
+              collection(firestore, 'messages'),
+              where('masterId', '==', masterId),
+              where('subscriberId', '==', subscriberId),
+              limit(500)
+            );
+            const snapshot = await getDocs(fallbackQ);
+            const docs = parseMessageDocs(snapshot.docs as unknown as Array<{ id: string; data: () => Record<string, unknown> }>);
+            docs.sort((a, b) => a.createdAt - b.createdAt);
+            prevMessageIdsRef.current = new Set(docs.map(d => d.id));
+            console.log('[Chat] getDocs fallback for messages succeeded, got', docs.length);
+            setMessages(docs);
+          } catch (fbErr: unknown) {
+            const fbMsg = fbErr instanceof Error ? fbErr.message : String(fbErr);
+            console.log('[Chat] getDocs fallback for messages also failed:', fbMsg);
+          }
           setIsLoadingMessages(false);
         }
       );
