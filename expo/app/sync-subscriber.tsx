@@ -12,6 +12,7 @@ import {
   TextInput,
   Modal,
   FlatList,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { Stack } from 'expo-router';
 import {
@@ -385,7 +386,16 @@ export default function SyncSubscriberScreen() {
       </ScrollView>
 
       <Modal visible={showAddModal} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <ScrollView
+            contentContainerStyle={styles.modalScrollContent}
+            keyboardShouldPersistTaps="handled"
+            bounces={false}
+            showsVerticalScrollIndicator={false}
+          >
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Новая подписка</Text>
@@ -443,7 +453,8 @@ export default function SyncSubscriberScreen() {
               )}
             </TouchableOpacity>
           </View>
-        </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
       </Modal>
 
       <Modal visible={showRenameModal} animationType="fade" transparent>
@@ -775,6 +786,9 @@ function createStyles(colors: ThemeColors) {
     modalOverlay: {
       flex: 1,
       backgroundColor: 'rgba(0,0,0,0.6)',
+    },
+    modalScrollContent: {
+      flexGrow: 1,
       justifyContent: 'center',
       paddingHorizontal: 20,
     },
