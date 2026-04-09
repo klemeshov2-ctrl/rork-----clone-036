@@ -142,6 +142,8 @@ export function CommentsBottomSheet({ visible, onClose, entityType, entityId, ti
     isSending,
     isAuthenticated,
     userId,
+    canWriteComments,
+    cannotWriteReason,
   } = useComments();
   const { userEmail } = useBackup();
 
@@ -321,37 +323,43 @@ export function CommentsBottomSheet({ visible, onClose, entityType, entityId, ti
             </View>
 
             {isAuthenticated ? (
-              <View style={styles.inputContainer}>
-                <View style={styles.inputRow}>
-                  <TextInput
-                    style={styles.input}
-                    value={inputText}
-                    onChangeText={setInputText}
-                    placeholder="Написать комментарий..."
-                    placeholderTextColor={colors.textMuted}
-                    multiline
-                    maxLength={1000}
-                    editable={!isSending}
-                    onFocus={() => {
-                      setTimeout(() => {
-                        listRef.current?.scrollToEnd({ animated: true });
-                      }, 300);
-                    }}
-                  />
-                  <TouchableOpacity
-                    style={[styles.sendBtn, (!inputText.trim() || isSending) && styles.sendBtnDisabled]}
-                    onPress={handleSend}
-                    disabled={!inputText.trim() || isSending}
-                    activeOpacity={0.7}
-                  >
-                    {isSending ? (
-                      <ActivityIndicator size="small" color="#fff" />
-                    ) : (
-                      <Send size={18} color="#fff" />
-                    )}
-                  </TouchableOpacity>
+              canWriteComments ? (
+                <View style={styles.inputContainer}>
+                  <View style={styles.inputRow}>
+                    <TextInput
+                      style={styles.input}
+                      value={inputText}
+                      onChangeText={setInputText}
+                      placeholder="Написать комментарий..."
+                      placeholderTextColor={colors.textMuted}
+                      multiline
+                      maxLength={1000}
+                      editable={!isSending}
+                      onFocus={() => {
+                        setTimeout(() => {
+                          listRef.current?.scrollToEnd({ animated: true });
+                        }, 300);
+                      }}
+                    />
+                    <TouchableOpacity
+                      style={[styles.sendBtn, (!inputText.trim() || isSending) && styles.sendBtnDisabled]}
+                      onPress={handleSend}
+                      disabled={!inputText.trim() || isSending}
+                      activeOpacity={0.7}
+                    >
+                      {isSending ? (
+                        <ActivityIndicator size="small" color="#fff" />
+                      ) : (
+                        <Send size={18} color="#fff" />
+                      )}
+                    </TouchableOpacity>
+                  </View>
                 </View>
-              </View>
+              ) : (
+                <View style={styles.disabledInputContainer}>
+                  <Text style={styles.disabledInputText}>{cannotWriteReason || 'Нельзя писать комментарии'}</Text>
+                </View>
+              )
             ) : (
               <View style={styles.authPending}>
                 <ActivityIndicator size="small" color={colors.primary} />
@@ -531,6 +539,21 @@ function createStyles(colors: ThemeColors, bottomInset: number) {
     authPendingText: {
       fontSize: 13,
       color: colors.textMuted,
+    },
+    disabledInputContainer: {
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+      paddingHorizontal: 20,
+      paddingVertical: 14,
+      paddingBottom: Math.max(bottomInset + 8, 16),
+      backgroundColor: colors.surface,
+      alignItems: 'center' as const,
+    },
+    disabledInputText: {
+      fontSize: 13,
+      color: colors.textMuted,
+      fontStyle: 'italic' as const,
+      textAlign: 'center' as const,
     },
   });
 }

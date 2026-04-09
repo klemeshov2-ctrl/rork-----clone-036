@@ -6,15 +6,16 @@ import {
   FlatList,
   TouchableOpacity,
   Alert,
+  Modal,
 } from 'react-native';
-import { Check, ChevronRight, MessageCircle, MessageSquare, Plus } from 'lucide-react-native';
+import { Check, ChevronRight, MessageCircle, MessageSquare, Plus, Users, X } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useThemeColors } from '@/providers/ThemeProvider';
 import { ThemeColors } from '@/constants/colors';
 import { useComments } from '@/providers/CommentsProvider';
 import { useChat } from '@/providers/ChatProvider';
 import { useObjects } from '@/providers/ObjectsProvider';
-import type { Comment, CommentEntityType, ChatDialog, MasterSubscription } from '@/types';
+import type { Comment, CommentEntityType, ChatDialog, MasterSubscription, FirestoreSubscription } from '@/types';
 import { useBackup } from '@/providers/BackupProvider';
 import { useProfile } from '@/providers/ProfileProvider';
 
@@ -188,8 +189,10 @@ export default function NotificationsScreen() {
   const router = useRouter();
 
   const [activeTab, setActiveTab] = useState<'comments' | 'chats'>('comments');
+  const [subscriberPickerVisible, setSubscriberPickerVisible] = useState(false);
 
   const currentUserId = chatUserId;
+  const { firestoreSubscribers } = useBackup();
 
   const activeSubscription = useMemo(() => {
     if (isSubscriberProfile) {
@@ -215,12 +218,29 @@ export default function NotificationsScreen() {
           },
         });
       } else {
-        Alert.alert('Нет контактов', 'Сначала добавьте подписку на мастера в разделе синхронизации.');
+        Alert.alert('Ошибка', 'Недействительная ссылка мастера. Проверьте подписку и попробуйте снова.');
       }
     } else {
-      Alert.alert('Подсказка', 'Чаты создаются подписчиками. Когда подписчик напишет вам, чат появится здесь автоматически.');
+      if (!firestoreSubscribers || firestoreSubscribers.length === 0) {
+        Alert.alert('Нет подписчиков', 'Вы не можете начать чат, пока у вас нет подписчиков.');
+        return;
+      }
+      setSubscriberPickerVisible(true);
     }
-  }, [currentUserId, isSubscriberProfile, activeSubscription, router]);
+  }, [currentUserId, isSubscriberProfile, activeSubscription, router, firestoreSubscribers]);
+
+  const handleSelectSubscriber = useCallback((subscriber: FirestoreSubscription) => {
+    setSubscriberPickerVisible(false);
+    if (!currentUserId) return;
+    router.push({
+      pathname: '/chat' as any,
+      params: {
+        masterId: currentUserId,
+        subscriberId: subscriber.subscriberId,
+        partnerName: subscriber.subscriberName || 'Подписчик',
+      },
+    });
+  }, [currentUserId, router]);
 
   const navigateToComment = useCallback((comment: Comment) => {
     markAsRead(comment.id);
@@ -326,6 +346,58 @@ export default function NotificationsScreen() {
         </TouchableOpacity>
       </View>
 
+      <Modal
+        visible={subscriberPickerVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setSubscriberPickerVisible(false)}
+      >
+        <View style={styles.pickerOverlay}>
+          <View style={styles.pickerSheet}>
+            <View style={styles.pickerHeader}>
+              <View style={styles.pickerHeaderLeft}>
+                <Users size={18} color={colors.primary} />
+                <Text style={styles.pickerTitle}>Выберите подписчика</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.pickerCloseBtn}
+                onPress={() => setSubscriberPickerVisible(false)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <X size={18} color={colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+            <FlatList
+              data={firestoreSubscribers}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 20 }}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.subscriberItem}
+                  onPress={() => handleSelectSubscriber(item)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.subscriberAvatar}>
+                    <Text style={styles.subscriberAvatarText}>
+                      {(item.subscriberName?.[0] || '?').toUpperCase()}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.subscriberName}>{item.subscriberName || 'Подписчик'}</Text>
+                  </View>
+                  <ChevronRight size={16} color={colors.textMuted} />
+                </TouchableOpacity>
+              )}
+              ListEmptyComponent={
+                <View style={styles.emptyContainer}>
+                  <Text style={styles.emptySubtext}>Нет подписчиков</Text>
+                </View>
+              }
+            />
+          </View>
+        </View>
+      </Modal>
+
       {activeTab === 'comments' ? (
         <>
           {unreadComments.length > 0 && (
@@ -371,18 +443,16 @@ export default function NotificationsScreen() {
               <Text style={styles.emptySubtext}>
                 {isSubscriberProfile
                   ? 'Напишите мастеру, чтобы начать общение'
-                  : 'Когда подписчик напишет вам, чат появится здесь'}
+                  : 'Выберите подписчика, чтобы начать чат'}
               </Text>
-              {isSubscriberProfile && (
-                <TouchableOpacity
-                  style={styles.startChatBtn}
-                  onPress={handleStartNewChat}
-                  activeOpacity={0.7}
-                >
-                  <Plus size={18} color="#fff" />
-                  <Text style={styles.startChatBtnText}>Начать чат</Text>
-                </TouchableOpacity>
-              )}
+              <TouchableOpacity
+                style={styles.startChatBtn}
+                onPress={handleStartNewChat}
+                activeOpacity={0.7}
+              >
+                <Plus size={18} color="#fff" />
+                <Text style={styles.startChatBtnText}>Начать чат</Text>
+              </TouchableOpacity>
             </View>
           ) : (
             <View style={{ flex: 1 }}>
@@ -393,15 +463,13 @@ export default function NotificationsScreen() {
                 contentContainerStyle={styles.listContent}
                 showsVerticalScrollIndicator={false}
               />
-              {isSubscriberProfile && (
-                <TouchableOpacity
-                  style={styles.fab}
-                  onPress={handleStartNewChat}
-                  activeOpacity={0.7}
-                >
-                  <Plus size={24} color="#fff" />
-                </TouchableOpacity>
-              )}
+              <TouchableOpacity
+                style={styles.fab}
+                onPress={handleStartNewChat}
+                activeOpacity={0.7}
+              >
+                <Plus size={24} color="#fff" />
+              </TouchableOpacity>
             </View>
           )}
         </>
@@ -539,6 +607,73 @@ function createStyles(colors: ThemeColors) {
       shadowOpacity: 0.3,
       shadowRadius: 5,
       zIndex: 100,
+    },
+    pickerOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      justifyContent: 'flex-end',
+    },
+    pickerSheet: {
+      backgroundColor: colors.background,
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      maxHeight: '60%',
+      paddingTop: 16,
+    },
+    pickerHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 20,
+      paddingBottom: 14,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+      marginBottom: 8,
+    },
+    pickerHeaderLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    pickerTitle: {
+      fontSize: 17,
+      fontWeight: '700' as const,
+      color: colors.text,
+    },
+    pickerCloseBtn: {
+      width: 34,
+      height: 34,
+      borderRadius: 17,
+      backgroundColor: colors.surface,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    subscriberItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 12,
+      paddingHorizontal: 4,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+      gap: 12,
+    },
+    subscriberAvatar: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: colors.primary + '20',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    subscriberAvatarText: {
+      fontSize: 16,
+      fontWeight: '700' as const,
+      color: colors.primary,
+    },
+    subscriberName: {
+      fontSize: 15,
+      fontWeight: '600' as const,
+      color: colors.text,
     },
   });
 }

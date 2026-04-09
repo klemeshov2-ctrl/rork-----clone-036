@@ -39,6 +39,8 @@ interface CommentsContextType {
   markAsRead: (commentId: string) => void;
   markAllAsRead: () => void;
   activeMasterId: string | null;
+  canWriteComments: boolean;
+  cannotWriteReason: string | null;
 }
 
 function makeKey(entityType: string, entityId: string): string {
@@ -371,7 +373,12 @@ export const [CommentsProvider, useComments] = createContextHook<CommentsContext
       return;
     }
 
-
+    if (!isSubscriberProfile) {
+      if (!firestoreSubscribers || firestoreSubscribers.length === 0) {
+        Alert.alert('Нет подписчиков', 'Вы не можете писать комментарии, пока у вас нет подписчиков.');
+        return;
+      }
+    }
 
     if (isSubscriberProfile) {
       const activeSub = subscriptions.find(s => s.id === activeProfileId);
@@ -444,6 +451,29 @@ export const [CommentsProvider, useComments] = createContextHook<CommentsContext
     }
   }, [userId, userEmail, displayName, activeMasterId, backupMasterId, isSubscriberProfile, subscriptions, activeProfileId, subscriberEmails, firestoreSubscribers]);
 
+  const canWriteComments = useMemo(() => {
+    if (isSubscriberProfile) {
+      const activeSub = subscriptions.find(s => s.id === activeProfileId);
+      if (!activeSub || !activeSub.masterId) return false;
+      if (!activeMasterId || activeMasterId === userId) return false;
+      return true;
+    }
+    return firestoreSubscribers.length > 0;
+  }, [isSubscriberProfile, subscriptions, activeProfileId, activeMasterId, userId, firestoreSubscribers]);
+
+  const cannotWriteReason = useMemo(() => {
+    if (!userId) return 'Авторизация не завершена';
+    if (isSubscriberProfile) {
+      const activeSub = subscriptions.find(s => s.id === activeProfileId);
+      if (!activeSub) return 'Подписка не найдена';
+      if (!activeSub.masterId) return 'Недействительная ссылка мастера';
+      if (!activeMasterId || activeMasterId === userId) return 'Не удалось подключиться к мастеру';
+      return null;
+    }
+    if (firestoreSubscribers.length === 0) return 'Нет подписчиков';
+    return null;
+  }, [userId, isSubscriberProfile, subscriptions, activeProfileId, activeMasterId, firestoreSubscribers]);
+
   return useMemo(() => ({
     comments: commentsMap,
     loadComments,
@@ -459,5 +489,7 @@ export const [CommentsProvider, useComments] = createContextHook<CommentsContext
     markAsRead,
     markAllAsRead,
     activeMasterId,
-  }), [commentsMap, loadComments, addComment, isLoading, isSending, userId, displayName, setDisplayName, unreadComments, unreadCount, markAsRead, markAllAsRead, activeMasterId]);
+    canWriteComments,
+    cannotWriteReason,
+  }), [commentsMap, loadComments, addComment, isLoading, isSending, userId, displayName, setDisplayName, unreadComments, unreadCount, markAsRead, markAllAsRead, activeMasterId, canWriteComments, cannotWriteReason]);
 });

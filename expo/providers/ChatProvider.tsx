@@ -333,6 +333,18 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
       return;
     }
 
+    if (isSubscriberProfile) {
+      const activeSub = subscriptions.find(s => s.id === activeProfileId);
+      if (!activeSub || !activeSub.masterId) {
+        Alert.alert('Ошибка', 'Недействительная ссылка мастера. Проверьте подписку.');
+        return;
+      }
+      if (activeSub.masterId !== masterId) {
+        Alert.alert('Ошибка', 'Этот чат не принадлежит вашему мастеру.');
+        return;
+      }
+    }
+
     setIsSending(true);
     try {
       const resolvedName = displayName || userEmail || 'Аноним';
@@ -403,7 +415,7 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
     } finally {
       setIsSending(false);
     }
-  }, [userId, userEmail, displayName, isSubscriberProfile, subscriptions]);
+  }, [userId, userEmail, displayName, isSubscriberProfile, subscriptions, activeProfileId]);
 
   const markChatAsRead = useCallback((masterId: string, subscriberId: string) => {
     if (!userId) return;
