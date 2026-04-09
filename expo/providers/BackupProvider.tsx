@@ -54,6 +54,7 @@ import {
   sendFolderInvitationYandex,
 } from '@/lib/yandexDisk';
 import { auth, firestore } from '@/config/firebase';
+import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
 import {
   doc,
   setDoc,
@@ -219,6 +220,7 @@ interface BackupContextType {
 
   firestoreSubscribers: FirestoreSubscription[];
   isLoadingSubscribers: boolean;
+  firestoreUid: string | null;
 }
 
 export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(() => {
@@ -272,8 +274,26 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
   const [firestoreSubscribers, setFirestoreSubscribers] = useState<FirestoreSubscription[]>([]);
   const [isLoadingSubscribers, setIsLoadingSubscribers] = useState(false);
   const prevSubscriberIdsRef = useRef<Set<string>>(new Set());
+  const [firebaseUid, setFirebaseUid] = useState<string | null>(auth.currentUser?.uid || null);
 
   const { activeProfileId, refreshProfiles } = useProfile();
+
+  useEffect(() => {
+    console.log('[Backup] Setting up Firebase auth state listener...');
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        console.log('[Backup] Firebase auth state changed, uid:', user.uid);
+        setFirebaseUid(user.uid);
+      } else {
+        console.log('[Backup] No Firebase user, signing in anonymously...');
+        setFirebaseUid(null);
+        signInAnonymously(auth).catch((err) => {
+          console.log('[Backup] Anonymous auth error:', err?.message);
+        });
+      }
+    });
+    return () => unsubscribe();
+  }, []);
 
   const syncTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -376,19 +396,39 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
     console.log('[Backup] Firestore subscribers:', subs.length);
   }, []);
 
-  useEffect(() => {
-    if (!masterId && !isMasterEnabled) return;
-    const currentMasterId = masterId || auth.currentUser?.uid;
-    if (!currentMasterId) return;
+  const effectiveMasterId = useMemo(() => {
+    return masterId || firebaseUid || null;
+  }, [masterId, firebaseUid]);
 
-    console.log('[Backup] Setting up Firestore subscribers listener for masterId:', currentMasterId);
+  useEffect(() => {
+    if (!effectiveMasterId) {
+      console.log('[Backup] No effectiveMasterId yet, skipping subscribers listener');
+      return;
+    }
+    if (!isMasterEnabled && !masterId) {
+      console.log('[Backup] Master mode not enabled and no stored masterId, skipping subscribers listener');
+      return;
+    }
+
+    console.log('[Backup] Setting up Firestore subscribers listener for masterId:', effectiveMasterId, '(masterId:', masterId, ', firebaseUid:', firebaseUid, ')');
     setIsLoadingSubscribers(true);
 
+    const masterIdsToQuery = new Set<string>();
+    masterIdsToQuery.add(effectiveMasterId);
+    if (masterId && masterId !== effectiveMasterId) masterIdsToQuery.add(masterId);
+    if (firebaseUid && firebaseUid !== effectiveMasterId) masterIdsToQuery.add(firebaseUid);
+    const masterIdsArr = Array.from(masterIdsToQuery).filter(Boolean);
+
     try {
-      const q = query(
-        collection(firestore, 'subscriptions'),
-        where('masterId', '==', currentMasterId)
-      );
+      const q = masterIdsArr.length === 1
+        ? query(
+            collection(firestore, 'subscriptions'),
+            where('masterId', '==', masterIdsArr[0])
+          )
+        : query(
+            collection(firestore, 'subscriptions'),
+            where('masterId', 'in', masterIdsArr)
+          );
 
       const unsubscribe = onSnapshot(
         q,
@@ -399,10 +439,15 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
         async (error) => {
           console.log('[Backup] Firestore subscribers onSnapshot error:', error?.message, '- trying getDocs fallback');
           try {
-            const fallbackQ = query(
-              collection(firestore, 'subscriptions'),
-              where('masterId', '==', currentMasterId)
-            );
+            const fallbackQ = masterIdsArr.length === 1
+              ? query(
+                  collection(firestore, 'subscriptions'),
+                  where('masterId', '==', masterIdsArr[0])
+                )
+              : query(
+                  collection(firestore, 'subscriptions'),
+                  where('masterId', 'in', masterIdsArr)
+                );
             const snapshot = await getDocs(fallbackQ);
             const subs = parseSubscriberDocs(snapshot as unknown as { docs: Array<{ id: string; data: () => Record<string, unknown> }> });
             handleNewSubscribers(subs);
@@ -418,7 +463,7 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
       console.log('[Backup] Firestore subscribers listener setup error:', e?.message);
       setIsLoadingSubscribers(false);
     }
-  }, [masterId, isMasterEnabled, parseSubscriberDocs, handleNewSubscribers]);
+  }, [effectiveMasterId, masterId, firebaseUid, isMasterEnabled, parseSubscriberDocs, handleNewSubscribers]);
 
   const refreshAllProviders = useCallback(async () => {
     console.log('[Backup] Refreshing all providers after restore...');
@@ -1546,7 +1591,7 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
       }
 
       try {
-        const currentMasterId = masterId || auth.currentUser?.uid || null;
+        const currentMasterId = masterId || firebaseUid || auth.currentUser?.uid || null;
         if (currentMasterId) {
           const masterInfo = {
             masterId: currentMasterId,
@@ -1557,6 +1602,8 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
           console.log('[Backup] Uploading master_info.json with masterId:', currentMasterId);
           await uploadTextFileYandex(accessToken, SYNC_FOLDER + '/master_info.json', JSON.stringify(masterInfo));
           console.log('[Backup] master_info.json uploaded successfully');
+        } else {
+          console.log('[Backup] WARNING: No masterId available for master_info.json!');
         }
       } catch (masterInfoErr: any) {
         console.log('[Backup] Failed to upload master_info.json (non-critical):', masterInfoErr?.message);
@@ -2669,5 +2716,7 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
 
     firestoreSubscribers,
     isLoadingSubscribers,
-  }), [accessToken, userEmail, lastBackupDate, autoBackupEnabled, isCreatingBackup, isRestoring, isLoadingBackups, backupsList, signIn, signOut, createBackup, restoreBackup, loadBackupsList, toggleAutoBackup, isInitializing, isMasterEnabled, masterInterval, masterPublicUrl, lastMasterPublish, isPublishing, toggleMasterMode, setMasterInterval, publishBackup, subscriptionUrl, isAutoSyncEnabled, syncInterval, lastSyncCheck, isSyncing, subscribeToMaster, unsubscribe, setSyncIntervalFn, toggleAutoSync, manualSync, subscriptions, addSubscription, removeSubscription, renameSubscription, updateSubscriptionAutoSync, updateSubscriptionInterval, syncSubscription, isSyncingSubscription, masterAutoSyncEnabled, masterAutoSyncInterval, lastMasterSync, isMasterSyncing, toggleMasterAutoSync, setMasterAutoSyncInterval, masterSyncNow, switchAccount, resetMasterSettings, syncProgress, masterId, yandexUserId, activeProfileId, subscriberEmails, addSubscriberEmail, removeSubscriberEmail, grantAccessToSubscriber, sendInvitationToSubscriber, isGrantingAccess, isSendingInvitation, firestoreSubscribers, isLoadingSubscribers]);
+
+    firestoreUid: firebaseUid,
+  }), [accessToken, userEmail, lastBackupDate, autoBackupEnabled, isCreatingBackup, isRestoring, isLoadingBackups, backupsList, signIn, signOut, createBackup, restoreBackup, loadBackupsList, toggleAutoBackup, isInitializing, isMasterEnabled, masterInterval, masterPublicUrl, lastMasterPublish, isPublishing, toggleMasterMode, setMasterInterval, publishBackup, subscriptionUrl, isAutoSyncEnabled, syncInterval, lastSyncCheck, isSyncing, subscribeToMaster, unsubscribe, setSyncIntervalFn, toggleAutoSync, manualSync, subscriptions, addSubscription, removeSubscription, renameSubscription, updateSubscriptionAutoSync, updateSubscriptionInterval, syncSubscription, isSyncingSubscription, masterAutoSyncEnabled, masterAutoSyncInterval, lastMasterSync, isMasterSyncing, toggleMasterAutoSync, setMasterAutoSyncInterval, masterSyncNow, switchAccount, resetMasterSettings, syncProgress, masterId, yandexUserId, activeProfileId, subscriberEmails, addSubscriberEmail, removeSubscriberEmail, grantAccessToSubscriber, sendInvitationToSubscriber, isGrantingAccess, isSendingInvitation, firestoreSubscribers, isLoadingSubscribers, firebaseUid]);
 });

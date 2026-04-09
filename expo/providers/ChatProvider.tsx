@@ -47,7 +47,7 @@ function getChatDocId(masterId: string, subscriberId: string): string {
 }
 
 export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => {
-  const { userEmail, masterId: backupMasterId, subscriptions } = useBackup();
+  const { userEmail, masterId: backupMasterId, subscriptions, firestoreUid } = useBackup();
   const { activeProfileId, isSubscriberProfile } = useProfile();
   const { userId: commentsUserId, displayName } = useComments();
 
@@ -100,11 +100,12 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
     const ids = new Set<string>();
     if (backupMasterId) ids.add(backupMasterId);
     if (userId) ids.add(userId);
+    if (firestoreUid && firestoreUid !== userId) ids.add(firestoreUid);
     subscriptions.forEach(s => {
       if (s.masterId) ids.add(s.masterId);
     });
     return Array.from(ids).filter(Boolean);
-  }, [backupMasterId, userId, subscriptions]);
+  }, [backupMasterId, userId, firestoreUid, subscriptions]);
 
   useEffect(() => {
     if (!userId) return;

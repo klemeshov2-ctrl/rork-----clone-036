@@ -46,7 +46,7 @@ function makeKey(entityType: string, entityId: string): string {
 }
 
 export const [CommentsProvider, useComments] = createContextHook<CommentsContextType>(() => {
-  const { userEmail, masterId: backupMasterId, subscriptions, subscriberEmails, firestoreSubscribers } = useBackup();
+  const { userEmail, masterId: backupMasterId, subscriptions, subscriberEmails, firestoreSubscribers, firestoreUid } = useBackup();
   const { activeProfileId, isSubscriberProfile } = useProfile();
 
   const [userId, setUserId] = useState<string | null>(null);
@@ -130,11 +130,12 @@ export const [CommentsProvider, useComments] = createContextHook<CommentsContext
     const ids = new Set<string>();
     if (backupMasterId) ids.add(backupMasterId);
     if (userId) ids.add(userId);
+    if (firestoreUid && firestoreUid !== userId) ids.add(firestoreUid);
     subscriptions.forEach(s => {
       if (s.masterId) ids.add(s.masterId);
     });
     return Array.from(ids).filter(Boolean);
-  }, [backupMasterId, userId, subscriptions]);
+  }, [backupMasterId, userId, firestoreUid, subscriptions]);
 
   useEffect(() => {
     if (!userId) return;
