@@ -419,50 +419,74 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
     if (firebaseUid && firebaseUid !== effectiveMasterId) masterIdsToQuery.add(firebaseUid);
     const masterIdsArr = Array.from(masterIdsToQuery).filter(Boolean);
 
-    try {
-      const q = masterIdsArr.length === 1
-        ? query(
-            collection(firestore, 'subscriptions'),
-            where('masterId', '==', masterIdsArr[0])
-          )
-        : query(
-            collection(firestore, 'subscriptions'),
-            where('masterId', 'in', masterIdsArr)
-          );
+    const unsubscribers: (() => void)[] = [];
+    const allSubs = new Map<string, FirestoreSubscription>();
 
-      const unsubscribe = onSnapshot(
-        q,
-        (snapshot) => {
-          const subs = parseSubscriberDocs(snapshot as unknown as { docs: Array<{ id: string; data: () => Record<string, unknown> }> });
-          handleNewSubscribers(subs);
-        },
-        async (error) => {
-          console.log('[Backup] Firestore subscribers onSnapshot error:', error?.message, '- trying getDocs fallback');
-          try {
-            const fallbackQ = masterIdsArr.length === 1
-              ? query(
-                  collection(firestore, 'subscriptions'),
-                  where('masterId', '==', masterIdsArr[0])
-                )
-              : query(
-                  collection(firestore, 'subscriptions'),
-                  where('masterId', 'in', masterIdsArr)
-                );
-            const snapshot = await getDocs(fallbackQ);
+    const mergeAndNotify = () => {
+      const merged = Array.from(allSubs.values());
+      merged.sort((a, b) => b.createdAt - a.createdAt);
+      handleNewSubscribers(merged);
+    };
+
+    let hasError = false;
+
+    for (const mid of masterIdsArr) {
+      try {
+        const q = query(
+          collection(firestore, 'subscriptions'),
+          where('masterId', '==', mid)
+        );
+
+        const unsubscribe = onSnapshot(
+          q,
+          (snapshot) => {
             const subs = parseSubscriberDocs(snapshot as unknown as { docs: Array<{ id: string; data: () => Record<string, unknown> }> });
-            handleNewSubscribers(subs);
-          } catch (fallbackErr: any) {
-            console.log('[Backup] Firestore subscribers getDocs fallback error:', fallbackErr?.message);
-            setIsLoadingSubscribers(false);
+            console.log('[Backup] Subscribers snapshot for masterId', mid, ':', subs.length, 'docs');
+            subs.forEach(s => allSubs.set(s.id, s));
+            const currentIds = new Set(subs.map(s => s.id));
+            Array.from(allSubs.keys()).forEach(key => {
+              const sub = allSubs.get(key);
+              if (sub && sub.masterId === mid && !currentIds.has(key)) {
+                allSubs.delete(key);
+              }
+            });
+            mergeAndNotify();
+          },
+          async (error) => {
+            console.log('[Backup] Firestore subscribers onSnapshot error for masterId', mid, ':', error?.message, '- trying getDocs fallback');
+            hasError = true;
+            try {
+              const fallbackQ = query(
+                collection(firestore, 'subscriptions'),
+                where('masterId', '==', mid)
+              );
+              const snapshot = await getDocs(fallbackQ);
+              const subs = parseSubscriberDocs(snapshot as unknown as { docs: Array<{ id: string; data: () => Record<string, unknown> }> });
+              console.log('[Backup] getDocs fallback for masterId', mid, ':', subs.length, 'docs');
+              subs.forEach(s => allSubs.set(s.id, s));
+              mergeAndNotify();
+            } catch (fallbackErr: any) {
+              console.log('[Backup] Firestore subscribers getDocs fallback error for masterId', mid, ':', fallbackErr?.message);
+              if (masterIdsArr.indexOf(mid) === masterIdsArr.length - 1 && allSubs.size === 0) {
+                setIsLoadingSubscribers(false);
+              }
+            }
           }
-        }
-      );
+        );
 
-      return () => unsubscribe();
-    } catch (e: any) {
-      console.log('[Backup] Firestore subscribers listener setup error:', e?.message);
+        unsubscribers.push(unsubscribe);
+      } catch (e: any) {
+        console.log('[Backup] Firestore subscribers listener setup error for masterId', mid, ':', e?.message);
+      }
+    }
+
+    if (unsubscribers.length === 0) {
       setIsLoadingSubscribers(false);
     }
+
+    return () => {
+      unsubscribers.forEach(unsub => unsub());
+    };
   }, [effectiveMasterId, masterId, firebaseUid, isMasterEnabled, parseSubscriberDocs, handleNewSubscribers]);
 
   const refreshAllProviders = useCallback(async () => {
