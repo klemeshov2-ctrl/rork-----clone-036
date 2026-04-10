@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   Alert,
   Platform,
-  ScrollView,
 } from 'react-native';
 import { Stack } from 'expo-router';
 import { Trash2, Copy, AlertCircle, ShieldAlert, AlertTriangle, Info, Bug } from 'lucide-react-native';
@@ -217,11 +216,7 @@ export default function LogsScreen() {
     <View style={styles.container}>
       <Stack.Screen options={{ title: 'Журнал отладки' }} />
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.filterRow}
-      >
+      <View style={styles.filterRow}>
         {filterOptions.map(opt => {
           const isActive = filter === opt.key;
           return (
@@ -240,7 +235,9 @@ export default function LogsScreen() {
               <Text style={[
                 styles.filterChipText,
                 { color: isActive ? opt.color : colors.textSecondary },
-              ]}>
+              ]}
+                numberOfLines={1}
+              >
                 {opt.label}
               </Text>
               {opt.count > 0 && (
@@ -251,7 +248,7 @@ export default function LogsScreen() {
             </TouchableOpacity>
           );
         })}
-      </ScrollView>
+      </View>
 
       <View style={styles.actionsRow}>
         <TouchableOpacity style={styles.actionBtn} onPress={handleCopy} activeOpacity={0.7}>
@@ -295,7 +292,8 @@ function createStyles(colors: ThemeColors) {
     },
     filterRow: {
       flexDirection: 'row',
-      gap: 8,
+      flexWrap: 'wrap',
+      gap: 6,
       paddingHorizontal: 16,
       paddingTop: 12,
       paddingBottom: 8,
@@ -303,14 +301,14 @@ function createStyles(colors: ThemeColors) {
     filterChip: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 6,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
+      gap: 4,
+      paddingHorizontal: 10,
+      paddingVertical: 7,
       borderRadius: 20,
       borderWidth: 1,
     },
     filterChipText: {
-      fontSize: 13,
+      fontSize: 12,
       fontWeight: '600',
     },
     filterBadge: {
