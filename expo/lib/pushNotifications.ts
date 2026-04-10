@@ -15,13 +15,34 @@ export async function registerPushToken(userId: string): Promise<string | null> 
   try {
     if (Platform.OS === 'android') {
       await Notifications.setNotificationChannelAsync('default', {
-        name: 'default',
+        name: 'Общие',
         importance: Notifications.AndroidImportance.MAX,
         vibrationPattern: [0, 250, 250, 250],
         sound: 'default',
         lightColor: '#FF231F7C',
+        enableLights: true,
+        enableVibrate: true,
+        showBadge: true,
       });
-      console.log('[Push] Android default channel created');
+      await Notifications.setNotificationChannelAsync('chat_channel', {
+        name: 'Чат',
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        sound: 'default',
+        enableLights: true,
+        enableVibrate: true,
+        showBadge: true,
+      });
+      await Notifications.setNotificationChannelAsync('comments_channel', {
+        name: 'Комментарии',
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        sound: 'default',
+        enableLights: true,
+        enableVibrate: true,
+        showBadge: true,
+      });
+      console.log('[Push] Android all notification channels created');
     }
 
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
@@ -134,6 +155,10 @@ interface PushPayload {
   channelId?: string;
   sound?: string;
   priority?: string;
+  badge?: number;
+  ttl?: number;
+  _contentAvailable?: boolean;
+  _mutableContent?: boolean;
 }
 
 export async function sendPushNotifications(
@@ -159,9 +184,13 @@ export async function sendPushNotifications(
     title,
     body,
     data,
-    channelId,
+    channelId: channelId || 'default',
     sound: 'default',
     priority: 'high',
+    badge: 1,
+    ttl: 2419200,
+    _contentAvailable: true,
+    _mutableContent: true,
   }));
 
   try {

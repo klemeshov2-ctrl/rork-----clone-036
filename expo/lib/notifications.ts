@@ -25,15 +25,30 @@ export async function setupNotificationChannels(): Promise<void> {
   try {
     await Notifications.setNotificationChannelAsync('comments_channel', {
       name: 'Комментарии',
-      importance: Notifications.AndroidImportance.HIGH,
+      importance: Notifications.AndroidImportance.MAX,
       vibrationPattern: [0, 250, 250, 250],
       sound: 'default',
+      enableLights: true,
+      enableVibrate: true,
+      showBadge: true,
     });
     await Notifications.setNotificationChannelAsync('chat_channel', {
       name: 'Чат',
-      importance: Notifications.AndroidImportance.HIGH,
+      importance: Notifications.AndroidImportance.MAX,
       vibrationPattern: [0, 250, 250, 250],
       sound: 'default',
+      enableLights: true,
+      enableVibrate: true,
+      showBadge: true,
+    });
+    await Notifications.setNotificationChannelAsync('default', {
+      name: 'Общие',
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 250, 250, 250],
+      sound: 'default',
+      enableLights: true,
+      enableVibrate: true,
+      showBadge: true,
     });
     console.log('[Notifications] Android channels created');
   } catch (err) {
