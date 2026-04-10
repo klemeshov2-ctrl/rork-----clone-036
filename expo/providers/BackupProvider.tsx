@@ -221,6 +221,7 @@ interface BackupContextType {
   firestoreSubscribers: FirestoreSubscription[];
   isLoadingSubscribers: boolean;
   firestoreUid: string | null;
+  removeFirestoreSubscriber: (subscriberId: string) => Promise<void>;
 }
 
 export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(() => {
@@ -1854,6 +1855,37 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
     }
   }, [accessToken]);
 
+  const removeFirestoreSubscriber = useCallback(async (subscriberId: string) => {
+    const eMasterId = effectiveMasterId;
+    if (!eMasterId) {
+      Alert.alert('Ошибка', 'Не удалось определить masterId');
+      return;
+    }
+    try {
+      console.log('[Backup] Removing Firestore subscriber:', subscriberId, 'for masterId:', eMasterId);
+      const q = query(
+        collection(firestore, 'subscriptions'),
+        where('masterId', '==', eMasterId),
+        where('subscriberId', '==', subscriberId)
+      );
+      const snap = await getDocs(q);
+      if (snap.empty) {
+        console.log('[Backup] No Firestore subscription doc found for subscriber:', subscriberId);
+        Alert.alert('Ошибка', 'Подписчик не найден в базе данных');
+        return;
+      }
+      const { deleteDoc } = await import('firebase/firestore');
+      for (const d of snap.docs) {
+        await deleteDoc(d.ref);
+        console.log('[Backup] Deleted Firestore subscription doc:', d.id);
+      }
+      Alert.alert('Готово', 'Подписчик удалён');
+    } catch (e: any) {
+      console.log('[Backup] removeFirestoreSubscriber error:', e?.message);
+      Alert.alert('Ошибка', 'Не удалось удалить подписчика: ' + (e?.message || 'неизвестная ошибка'));
+    }
+  }, [effectiveMasterId]);
+
   const sendInvitationToSubscriber = useCallback(async (subscriberEmail: string) => {
     if (!accessToken) {
       Alert.alert('Ошибка', 'Сначала подключите Яндекс.Диск');
@@ -2814,5 +2846,6 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
     isLoadingSubscribers,
 
     firestoreUid: firebaseUid,
-  }), [accessToken, userEmail, lastBackupDate, autoBackupEnabled, isCreatingBackup, isRestoring, isLoadingBackups, backupsList, signIn, signOut, createBackup, restoreBackup, loadBackupsList, toggleAutoBackup, isInitializing, isMasterEnabled, masterInterval, masterPublicUrl, lastMasterPublish, isPublishing, toggleMasterMode, setMasterInterval, publishBackup, subscriptionUrl, isAutoSyncEnabled, syncInterval, lastSyncCheck, isSyncing, subscribeToMaster, unsubscribe, setSyncIntervalFn, toggleAutoSync, manualSync, subscriptions, addSubscription, removeSubscription, renameSubscription, updateSubscriptionAutoSync, updateSubscriptionInterval, syncSubscription, isSyncingSubscription, masterAutoSyncEnabled, masterAutoSyncInterval, lastMasterSync, isMasterSyncing, toggleMasterAutoSync, setMasterAutoSyncInterval, masterSyncNow, switchAccount, resetMasterSettings, syncProgress, masterId, yandexUserId, activeProfileId, subscriberEmails, addSubscriberEmail, removeSubscriberEmail, grantAccessToSubscriber, sendInvitationToSubscriber, isGrantingAccess, isSendingInvitation, firestoreSubscribers, isLoadingSubscribers, firebaseUid]);
+    removeFirestoreSubscriber,
+  }), [accessToken, userEmail, lastBackupDate, autoBackupEnabled, isCreatingBackup, isRestoring, isLoadingBackups, backupsList, signIn, signOut, createBackup, restoreBackup, loadBackupsList, toggleAutoBackup, isInitializing, isMasterEnabled, masterInterval, masterPublicUrl, lastMasterPublish, isPublishing, toggleMasterMode, setMasterInterval, publishBackup, subscriptionUrl, isAutoSyncEnabled, syncInterval, lastSyncCheck, isSyncing, subscribeToMaster, unsubscribe, setSyncIntervalFn, toggleAutoSync, manualSync, subscriptions, addSubscription, removeSubscription, renameSubscription, updateSubscriptionAutoSync, updateSubscriptionInterval, syncSubscription, isSyncingSubscription, masterAutoSyncEnabled, masterAutoSyncInterval, lastMasterSync, isMasterSyncing, toggleMasterAutoSync, setMasterAutoSyncInterval, masterSyncNow, switchAccount, resetMasterSettings, syncProgress, masterId, yandexUserId, activeProfileId, subscriberEmails, addSubscriberEmail, removeSubscriberEmail, grantAccessToSubscriber, sendInvitationToSubscriber, isGrantingAccess, isSendingInvitation, firestoreSubscribers, isLoadingSubscribers, firebaseUid, removeFirestoreSubscriber]);
 });

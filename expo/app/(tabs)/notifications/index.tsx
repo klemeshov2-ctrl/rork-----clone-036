@@ -8,7 +8,7 @@ import {
   Alert,
   Modal,
 } from 'react-native';
-import { Check, ChevronRight, MessageCircle, MessageSquare, Plus, Trash2, Users, X } from 'lucide-react-native';
+import { Check, ChevronRight, MessageCircle, MessageSquare, Plus, Trash2, UserMinus, Users, X } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useThemeColors } from '@/providers/ThemeProvider';
 import { ThemeColors } from '@/constants/colors';
@@ -215,7 +215,7 @@ export default function NotificationsScreen() {
   const [subscriberPickerVisible, setSubscriberPickerVisible] = useState(false);
 
   const currentUserId = chatUserId;
-  const { firestoreSubscribers } = useBackup();
+  const { firestoreSubscribers, removeFirestoreSubscriber } = useBackup();
 
   const activeSubscription = useMemo(() => {
     if (isSubscriberProfile) {
@@ -505,7 +505,7 @@ export default function NotificationsScreen() {
                 data={chats}
                 renderItem={renderChatItem}
                 keyExtractor={chatKeyExtractor}
-                contentContainerStyle={styles.listContent}
+                contentContainerStyle={[styles.listContent, { paddingBottom: 80 }]}
                 showsVerticalScrollIndicator={false}
               />
               <TouchableOpacity
@@ -639,7 +639,7 @@ function createStyles(colors: ThemeColors) {
     fab: {
       position: 'absolute',
       right: 20,
-      bottom: 20,
+      bottom: 24,
       width: 56,
       height: 56,
       borderRadius: 28,

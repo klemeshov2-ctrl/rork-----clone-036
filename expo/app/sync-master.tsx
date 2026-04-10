@@ -73,6 +73,7 @@ export default function SyncMasterScreen() {
     masterSyncNow,
     firestoreSubscribers,
     isLoadingSubscribers,
+    removeFirestoreSubscriber,
   } = useBackup();
 
   const [showQr, setShowQr] = useState(false);
@@ -371,9 +372,38 @@ export default function SyncMasterScreen() {
                             </Text>
                           </View>
                         </View>
-                        <View style={[styles.subscriberStatusBadge, { backgroundColor: colors.success + '15' }]}>
-                          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.success }} />
-                          <Text style={{ fontSize: 11, fontWeight: '600' as const, color: colors.success }}>Активен</Text>
+                        <View style={{ flexDirection: 'row' as const, alignItems: 'center' as const, gap: 8 }}>
+                          <View style={[styles.subscriberStatusBadge, { backgroundColor: colors.success + '15' }]}>
+                            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.success }} />
+                            <Text style={{ fontSize: 11, fontWeight: '600' as const, color: colors.success }}>Активен</Text>
+                          </View>
+                          <TouchableOpacity
+                            onPress={() => {
+                              Alert.alert(
+                                'Удалить подписчика',
+                                `Удалить ${sub.subscriberName}? Подписчик потеряет доступ к вашим данным.`,
+                                [
+                                  { text: 'Отмена', style: 'cancel' },
+                                  {
+                                    text: 'Удалить',
+                                    style: 'destructive',
+                                    onPress: () => removeFirestoreSubscriber(sub.subscriberId),
+                                  },
+                                ]
+                              );
+                            }}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            style={{
+                              width: 30,
+                              height: 30,
+                              borderRadius: 15,
+                              backgroundColor: colors.error + '12',
+                              alignItems: 'center' as const,
+                              justifyContent: 'center' as const,
+                            }}
+                          >
+                            <Trash2 size={14} color={colors.error} />
+                          </TouchableOpacity>
                         </View>
                       </View>
                     );
