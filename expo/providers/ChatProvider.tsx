@@ -434,13 +434,19 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
       return;
     }
 
+    const normalizedMasterId = !isSubscriberProfile
+      ? (backupMasterId || firestoreUid || masterId)
+      : masterId;
+
+    console.log('[Chat][DEBUG] sendMessage normalizedMasterId:', normalizedMasterId, '| original masterId:', masterId, '| backupMasterId:', backupMasterId, '| firestoreUid:', firestoreUid);
+
     if (isSubscriberProfile) {
       const activeSub = subscriptions.find(s => s.id === activeProfileId);
       if (!activeSub || !activeSub.masterId) {
         Alert.alert('Ошибка', 'Недействительная ссылка мастера. Проверьте подписку.');
         return;
       }
-      if (activeSub.masterId !== masterId) {
+      if (activeSub.masterId !== normalizedMasterId) {
         Alert.alert('Ошибка', 'Этот чат не принадлежит вашему мастеру.');
         return;
       }
@@ -450,13 +456,13 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
     const resolvedName = displayName || userEmail || 'Аноним';
     const isMaster = !isSubscriberProfile;
 
-    console.log('[Chat] Sending message:', { masterId, subscriberId, senderId: userId, senderName: resolvedName, firestoreUid, backupMasterId, isSubscriberProfile, activeProfileId });
+    console.log('[Chat] Sending message:', { normalizedMasterId, subscriberId, senderId: userId, senderName: resolvedName, firestoreUid, backupMasterId, isSubscriberProfile, activeProfileId });
 
     try {
       try {
-        console.log('[Chat][DEBUG] sendMessage: Adding message doc to Firestore:', { masterId, subscriberId, senderId: userId, senderName: resolvedName });
+        console.log('[Chat][DEBUG] sendMessage: Adding message doc to Firestore:', { masterId: normalizedMasterId, subscriberId, senderId: userId, senderName: resolvedName });
         const msgDocRef = await addDoc(collection(firestore, 'messages'), {
-          masterId,
+          masterId: normalizedMasterId,
           subscriberId,
           text,
           senderId: userId,
@@ -476,13 +482,13 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
       }
 
       try {
-        const chatDocId = getChatDocId(masterId, subscriberId);
+        const chatDocId = getChatDocId(normalizedMasterId, subscriberId);
         console.log('[Chat][DEBUG] sendMessage: Updating/creating chat doc:', chatDocId);
         const chatRef = doc(firestore, 'chats', chatDocId);
         const chatSnap = await getDoc(chatRef);
         console.log('[Chat][DEBUG] sendMessage: chatSnap exists:', chatSnap.exists(), 'data:', chatSnap.exists() ? JSON.stringify({ participants: chatSnap.data()?.participants, masterId: chatSnap.data()?.masterId, subscriberId: chatSnap.data()?.subscriberId }) : 'N/A');
 
-        const activeSub = subscriptions.find(s => s.masterId === masterId);
+        const activeSub = subscriptions.find(s => s.masterId === normalizedMasterId);
 
         if (chatSnap.exists()) {
           const updateData: Record<string, unknown> = {
@@ -492,14 +498,14 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
             ...(isMaster ? { masterName: resolvedName } : { subscriberName: resolvedName }),
           };
           if (!chatSnap.data().participants) {
-            updateData.participants = [masterId, subscriberId];
+            updateData.participants = [normalizedMasterId, subscriberId];
           }
           await updateDoc(chatRef, updateData);
         } else {
           await setDoc(chatRef, {
-            masterId,
+            masterId: normalizedMasterId,
             subscriberId,
-            participants: [masterId, subscriberId],
+            participants: [normalizedMasterId, subscriberId],
             masterName: isMaster ? resolvedName : (activeSub?.name || 'Мастер'),
             subscriberName: isMaster ? (activeSub?.name || 'Подписчик') : resolvedName,
             lastMessage: text,
@@ -510,12 +516,12 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
         console.log('[Chat] Chat doc updated/created');
 
         const recipientIds: string[] = [];
-        if (userId === masterId) {
+        if (userId === normalizedMasterId) {
           recipientIds.push(subscriberId);
         } else {
-          recipientIds.push(masterId);
+          recipientIds.push(normalizedMasterId);
         }
-        sendChatPush(recipientIds, resolvedName, text, masterId, subscriberId, userId).catch(err => {
+        sendChatPush(recipientIds, resolvedName, text, normalizedMasterId, subscriberId, userId).catch(err => {
           console.log('[Chat] Push notification send error:', err);
         });
       } catch (chatErr: unknown) {
@@ -527,7 +533,7 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
 
       if (!messagesUnsubRef.current) {
         console.log('[Chat] onSnapshot not active, force reloading messages');
-        loadMessages(masterId, subscriberId);
+        loadMessages(normalizedMasterId, subscriberId);
       }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -536,7 +542,7 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
     } finally {
       setIsSending(false);
     }
-  }, [userId, userEmail, displayName, isSubscriberProfile, subscriptions, activeProfileId, loadMessages]);
+  }, [userId, userEmail, displayName, isSubscriberProfile, subscriptions, activeProfileId, loadMessages, backupMasterId, firestoreUid]);
 
   const deleteChat = useCallback(async (masterId: string, subscriberId: string) => {
     console.log('[Chat][DEBUG] deleteChat called:', { masterId, subscriberId, userId });
