@@ -18,6 +18,7 @@ import {
 } from 'firebase/firestore';
 import { useBackup } from './BackupProvider';
 import { useProfile } from './ProfileProvider';
+import { useAccessCode } from './AccessCodeProvider';
 import type { Comment, CommentEntityType } from '@/types';
 import * as Notifications from 'expo-notifications';
 import { sendCommentPush } from '@/lib/pushNotifications';
@@ -51,6 +52,7 @@ function makeKey(entityType: string, entityId: string): string {
 export const [CommentsProvider, useComments] = createContextHook<CommentsContextType>(() => {
   const { userEmail, masterId: backupMasterId, subscriptions, subscriberEmails, firestoreSubscribers, firestoreUid } = useBackup();
   const { activeProfileId, isSubscriberProfile } = useProfile();
+  const { isAccessGranted } = useAccessCode();
 
   const [userId, setUserId] = useState<string | null>(null);
   const [commentsMap, setCommentsMap] = useState<Record<string, Comment[]>>({});
@@ -419,6 +421,11 @@ export const [CommentsProvider, useComments] = createContextHook<CommentsContext
 
   const addComment = useCallback(async (entityType: CommentEntityType, entityId: string, text: string) => {
     console.log('[Comments][DEBUG] addComment called:', { entityType, entityId, textLen: text.length, userId, activeMasterId, isSubscriberProfile });
+    if (!isAccessGranted) {
+      console.log('[Comments][DEBUG] addComment: access not granted, aborting');
+      Alert.alert('Доступ ограничен', 'Введите код доступа в настройках для добавления комментариев');
+      return;
+    }
     if (!userId) {
       console.log('[Comments][DEBUG] addComment: userId is null, aborting');
       Alert.alert('Ошибка', 'Авторизация не завершена. Попробуйте позже.');

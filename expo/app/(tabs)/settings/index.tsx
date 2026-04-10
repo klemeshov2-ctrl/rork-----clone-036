@@ -15,12 +15,13 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'react-native';
-import { Lock, Palette, ChevronRight, Check, LogOut, Delete, RotateCcw, X, HelpCircle, Info, Mail, Cloud, Shield, FileSpreadsheet, User, FileText, Fingerprint, ScanFace } from 'lucide-react-native';
+import { Lock, Palette, ChevronRight, Check, LogOut, Delete, RotateCcw, X, HelpCircle, Info, Mail, Cloud, Shield, FileSpreadsheet, User, FileText, Fingerprint, ScanFace, KeyRound, ShieldCheck, ShieldOff } from 'lucide-react-native';
 import { NotificationBell } from '@/components/NotificationBell';
 import { useRouter } from 'expo-router';
 import { useTheme, useThemeColors } from '@/providers/ThemeProvider';
 import { useAuth } from '@/providers/AuthProvider';
 import { useComments } from '@/providers/CommentsProvider';
+import { useAccessCode } from '@/providers/AccessCodeProvider';
 import { ThemeColors, AppTheme } from '@/constants/colors';
 
 type PinStep = 'current' | 'new' | 'confirm';
@@ -262,6 +263,7 @@ export default function SettingsScreen() {
   const { themeId, setTheme, themes } = useTheme();
   const { logout, pinEnabled, togglePinEnabled, hasPin, biometricAvailable, biometricEnabled, biometricType, toggleBiometric } = useAuth();
   const { displayName, setDisplayName } = useComments();
+  const { isAccessGranted, revokeAccess } = useAccessCode();
   const router = useRouter();
   const [showPinChange, setShowPinChange] = useState(false);
   const [nameInput, setNameInput] = useState(displayName);
@@ -374,6 +376,55 @@ export default function SettingsScreen() {
           </View>
           <ChevronRight size={18} color={colors.textMuted} />
         </TouchableOpacity>
+
+        <Text style={styles.sectionTitle}>Доступ</Text>
+        {isAccessGranted ? (
+          <View style={styles.settingRow}>
+            <View style={[styles.settingIcon, { backgroundColor: colors.success + '20' }]}>
+              <ShieldCheck size={20} color={colors.success} />
+            </View>
+            <View style={styles.settingInfo}>
+              <Text style={styles.settingLabel}>Доступ активен</Text>
+              <Text style={styles.settingDesc}>Чат и комментарии доступны</Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => {
+                Alert.alert(
+                  'Сброс доступа',
+                  'Вы потеряете доступ к чату и комментариям. Для восстановления потребуется ввести код заново.',
+                  [
+                    { text: 'Отмена', style: 'cancel' },
+                    { text: 'Сбросить', style: 'destructive', onPress: () => revokeAccess() },
+                  ]
+                );
+              }}
+              style={{
+                backgroundColor: colors.error + '15',
+                borderRadius: 10,
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={{ color: colors.error, fontSize: 13, fontWeight: '600' as const }}>Сбросить</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={styles.settingRow}
+            onPress={() => router.push('/access-code' as any)}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.settingIcon, { backgroundColor: colors.warning + '20' }]}>
+              <KeyRound size={20} color={colors.warning} />
+            </View>
+            <View style={styles.settingInfo}>
+              <Text style={styles.settingLabel}>Ввести код доступа</Text>
+              <Text style={styles.settingDesc}>Для чата и комментариев нужен код</Text>
+            </View>
+            <ChevronRight size={18} color={colors.textMuted} />
+          </TouchableOpacity>
+        )}
 
         <Text style={styles.sectionTitle}>Безопасность</Text>
         {hasPin && (

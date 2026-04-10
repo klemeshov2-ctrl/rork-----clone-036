@@ -17,6 +17,7 @@ import { BackupProvider } from "@/providers/BackupProvider";
 import { CommentsProvider, useComments } from "@/providers/CommentsProvider";
 import { ChatProvider, useChat } from "@/providers/ChatProvider";
 import { SyncPanelProvider } from "@/providers/SyncPanelProvider";
+import { AccessCodeProvider } from "@/providers/AccessCodeProvider";
 import { PinAuth } from "@/components/PinAuth";
 import { initLogger } from "@/lib/logger";
 import { db } from "@/config/firebase";
@@ -135,6 +136,7 @@ function RootLayoutNav() {
       <Stack.Screen name="object/add-contact" options={{ title: "Контакт" }} />
       <Stack.Screen name="notifications" options={{ title: "Уведомления" }} />
       <Stack.Screen name="chat" options={{ title: "Чат" }} />
+      <Stack.Screen name="access-code" options={{ title: "Код доступа" }} />
       <Stack.Screen name="modal" options={{ presentation: "modal" }} />
     </Stack>
   );
@@ -217,13 +219,15 @@ export default function RootLayout() {
                         <KnowledgeProvider>
                           <RemindersProvider>
                             <BackupProvider>
-                              <CommentsProvider>
-                                <ChatProvider>
-                                  <SyncPanelProvider>
-                                    <AuthGate />
-                                  </SyncPanelProvider>
-                                </ChatProvider>
-                              </CommentsProvider>
+                              <AccessCodeProvider>
+                                <CommentsProvider>
+                                  <ChatProvider>
+                                    <SyncPanelProvider>
+                                      <AuthGate />
+                                    </SyncPanelProvider>
+                                  </ChatProvider>
+                                </CommentsProvider>
+                              </AccessCodeProvider>
                             </BackupProvider>
                           </RemindersProvider>
                         </KnowledgeProvider>

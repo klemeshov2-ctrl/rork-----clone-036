@@ -23,6 +23,7 @@ import {
 import { useBackup } from './BackupProvider';
 import { useProfile } from './ProfileProvider';
 import { useComments } from './CommentsProvider';
+import { useAccessCode } from './AccessCodeProvider';
 import type { ChatMessage, ChatDialog } from '@/types';
 import * as Notifications from 'expo-notifications';
 import { sendChatPush } from '@/lib/pushNotifications';
@@ -54,6 +55,7 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
   const { userEmail, masterId: backupMasterId, subscriptions, firestoreUid } = useBackup();
   const { activeProfileId, isSubscriberProfile } = useProfile();
   const { userId: commentsUserId, displayName } = useComments();
+  const { isAccessGranted } = useAccessCode();
 
   const [userId, setUserId] = useState<string | null>(null);
   const [chats, setChats] = useState<ChatDialog[]>([]);
@@ -431,6 +433,11 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
 
   const sendMessage = useCallback(async (masterId: string, subscriberId: string, text: string) => {
     console.log('[Chat][DEBUG] sendMessage called:', { masterId, subscriberId, textLen: text.length, userId, isSubscriberProfile, activeProfileId });
+    if (!isAccessGranted) {
+      console.log('[Chat][DEBUG] sendMessage: access not granted, aborting');
+      Alert.alert('Доступ ограничен', 'Введите код доступа в настройках для отправки сообщений');
+      return;
+    }
     if (!userId) {
       console.log('[Chat][DEBUG] sendMessage: userId is null, aborting');
       Alert.alert('Ошибка', 'Авторизация не завершена.');

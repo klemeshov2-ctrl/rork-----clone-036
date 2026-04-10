@@ -19,6 +19,7 @@ import { useThemeColors } from '@/providers/ThemeProvider';
 import { ThemeColors } from '@/constants/colors';
 import { useComments } from '@/providers/CommentsProvider';
 import { useBackup } from '@/providers/BackupProvider';
+import { useAccessCode } from '@/providers/AccessCodeProvider';
 import type { Comment, CommentEntityType } from '@/types';
 
 interface CommentsBottomSheetProps {
@@ -146,6 +147,7 @@ export function CommentsBottomSheet({ visible, onClose, entityType, entityId, ti
     cannotWriteReason,
   } = useComments();
   const { userEmail } = useBackup();
+  const { isAccessGranted } = useAccessCode();
 
   const [inputText, setInputText] = useState('');
   const listRef = useRef<FlatList>(null);
@@ -322,7 +324,11 @@ export function CommentsBottomSheet({ visible, onClose, entityType, entityId, ti
               )}
             </View>
 
-            {isAuthenticated ? (
+            {!isAccessGranted ? (
+              <View style={styles.disabledInputContainer}>
+                <Text style={styles.disabledInputText}>Для комментариев введите код доступа в настройках</Text>
+              </View>
+            ) : isAuthenticated ? (
               canWriteComments ? (
                 <View style={styles.inputContainer}>
                   <View style={styles.inputRow}>

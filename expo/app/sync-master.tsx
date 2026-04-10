@@ -29,6 +29,7 @@ import {
 import { useThemeColors } from '@/providers/ThemeProvider';
 import { ThemeColors } from '@/constants/colors';
 import { useBackup, SYNC_INTERVALS, SyncIntervalValue } from '@/providers/BackupProvider';
+import { useAccessCode } from '@/providers/AccessCodeProvider';
 import { Image } from 'expo-image';
 import { RefreshCw } from 'lucide-react-native';
 import { TextInput, Modal } from 'react-native';
@@ -76,6 +77,7 @@ export default function SyncMasterScreen() {
     removeFirestoreSubscriber,
   } = useBackup();
 
+  const { isAccessGranted } = useAccessCode();
   const [showQr, setShowQr] = useState(false);
 
 
@@ -339,7 +341,7 @@ export default function SyncMasterScreen() {
               </TouchableOpacity>
             </View>
 
-            <View style={styles.section}>
+            {isAccessGranted && <View style={styles.section}>
               <Text style={styles.sectionTitle}>Подписчики ({firestoreSubscribers.length})</Text>
               <View style={styles.subscribersCard}>
                 {isLoadingSubscribers ? (
@@ -410,7 +412,7 @@ export default function SyncMasterScreen() {
                   })
                 )}
               </View>
-            </View>
+            </View>}
 
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Интервал автопубликации</Text>

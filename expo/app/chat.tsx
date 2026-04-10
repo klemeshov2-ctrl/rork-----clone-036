@@ -19,7 +19,9 @@ import { Stack } from 'expo-router';
 import { useThemeColors } from '@/providers/ThemeProvider';
 import { ThemeColors } from '@/constants/colors';
 import { useChat } from '@/providers/ChatProvider';
+import { useAccessCode } from '@/providers/AccessCodeProvider';
 import type { ChatMessage } from '@/types';
+import { KeyRound } from 'lucide-react-native';
 
 function formatMessageTime(ts: number): string {
   const d = new Date(ts);
@@ -153,6 +155,7 @@ export default function ChatScreen() {
     userId,
   } = useChat();
 
+  const { isAccessGranted } = useAccessCode();
   const [text, setText] = useState('');
   const flatListRef = useRef<FlatList>(null);
   const hasScrolledRef = useRef(false);
@@ -281,45 +284,52 @@ export default function ChatScreen() {
         />
       )}
 
-      <View style={[styles.inputBar, { paddingBottom: Math.max(8, insets.bottom) }]}>
-        <TextInput
-          style={styles.input}
-          value={text}
-          onChangeText={setText}
-          placeholder="Сообщение..."
-          placeholderTextColor={colors.textMuted}
-          multiline
-          maxLength={2000}
-          testID="chat-input"
-          onFocus={() => {
-            setTimeout(() => {
-              flatListRef.current?.scrollToEnd({ animated: true });
-            }, 300);
-          }}
-        />
-        <TouchableOpacity
-          style={[
-            styles.sendBtn,
-            {
-              backgroundColor:
-                text.trim().length > 0 ? colors.primary : colors.surface,
-            },
-          ]}
-          onPress={handleSend}
-          disabled={isSending || text.trim().length === 0}
-          activeOpacity={0.7}
-          testID="chat-send-btn"
-        >
-          {isSending ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <Send
-              size={18}
-              color={text.trim().length > 0 ? '#fff' : colors.textMuted}
-            />
-          )}
-        </TouchableOpacity>
-      </View>
+      {isAccessGranted ? (
+        <View style={[styles.inputBar, { paddingBottom: Math.max(8, insets.bottom) }]}>
+          <TextInput
+            style={styles.input}
+            value={text}
+            onChangeText={setText}
+            placeholder="Сообщение..."
+            placeholderTextColor={colors.textMuted}
+            multiline
+            maxLength={2000}
+            testID="chat-input"
+            onFocus={() => {
+              setTimeout(() => {
+                flatListRef.current?.scrollToEnd({ animated: true });
+              }, 300);
+            }}
+          />
+          <TouchableOpacity
+            style={[
+              styles.sendBtn,
+              {
+                backgroundColor:
+                  text.trim().length > 0 ? colors.primary : colors.surface,
+              },
+            ]}
+            onPress={handleSend}
+            disabled={isSending || text.trim().length === 0}
+            activeOpacity={0.7}
+            testID="chat-send-btn"
+          >
+            {isSending ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Send
+                size={18}
+                color={text.trim().length > 0 ? '#fff' : colors.textMuted}
+              />
+            )}
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <View style={[styles.accessBar, { paddingBottom: Math.max(8, insets.bottom) }]}>
+          <KeyRound size={16} color={colors.warning} />
+          <Text style={styles.accessBarText}>Для отправки сообщений введите код доступа</Text>
+        </View>
+      )}
     </KeyboardAvoidingView>
   );
 }
@@ -381,6 +391,22 @@ function createStyles(colors: ThemeColors) {
       borderRadius: 20,
       alignItems: 'center',
       justifyContent: 'center',
+    },
+    accessBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+      backgroundColor: colors.warning + '10',
+      gap: 8,
+    },
+    accessBarText: {
+      fontSize: 13,
+      color: colors.warning,
+      fontWeight: '500' as const,
     },
   });
 }

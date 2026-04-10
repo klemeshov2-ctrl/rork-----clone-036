@@ -19,6 +19,8 @@ import { useChat } from '@/providers/ChatProvider';
 import { useObjects } from '@/providers/ObjectsProvider';
 import { useBackup } from '@/providers/BackupProvider';
 import { useProfile } from '@/providers/ProfileProvider';
+import { useAccessCode } from '@/providers/AccessCodeProvider';
+import { KeyRound } from 'lucide-react-native';
 import type { Comment, CommentEntityType, ChatDialog, MasterSubscription, FirestoreSubscription } from '@/types';
 
 function formatDate(ts: number): string {
@@ -212,6 +214,7 @@ export default function NotificationsScreen() {
   const { getWorkEntry } = useObjects();
   const { subscriptions, masterId: backupMasterId } = useBackup();
   const { isSubscriberProfile, activeProfileId } = useProfile();
+  const { isAccessGranted } = useAccessCode();
   const router = useRouter();
 
   const [activeTab, setActiveTab] = useState<'comments' | 'chats'>('comments');
@@ -285,6 +288,10 @@ export default function NotificationsScreen() {
   }, [isSubscriberProfile, activeProfileId, subscriptions]);
 
   const handleStartNewChat = useCallback(() => {
+    if (!isAccessGranted) {
+      Alert.alert('Доступ ограничен', 'Введите код доступа в настройках');
+      return;
+    }
     if (!currentUserId) {
       Alert.alert('Ошибка', 'Авторизация не завершена');
       return;
