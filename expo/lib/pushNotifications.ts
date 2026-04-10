@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import { firestore } from '@/config/firebase';
 import { doc, setDoc, getDoc, getDocs, collection, query, where, serverTimestamp } from 'firebase/firestore';
 import Constants from 'expo-constants';
+import * as Device from 'expo-device';
 
 const EXPO_PUSH_API = 'https://exp.host/--/api/v2/push/send';
 
@@ -13,6 +14,17 @@ export async function registerPushToken(userId: string): Promise<string | null> 
   }
 
   try {
+    if (Platform.OS === 'android') {
+      await Notifications.setNotificationChannelAsync('default', {
+        name: 'default',
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        sound: 'default',
+        lightColor: '#FF231F7C',
+      });
+      console.log('[Push] Android default channel created');
+    }
+
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
     if (existingStatus !== 'granted') {
@@ -24,15 +36,15 @@ export async function registerPushToken(userId: string): Promise<string | null> 
       return null;
     }
 
-    const projectId = Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
-    
-    let tokenData;
-    if (projectId) {
-      tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
-    } else {
-      tokenData = await Notifications.getExpoPushTokenAsync();
-    }
-    
+    const projectId =
+      Constants.expoConfig?.extra?.eas?.projectId ??
+      Constants.easConfig?.projectId ??
+      'zhurnal-mastera';
+
+    console.log('[Push] Using projectId:', projectId);
+    console.log('[Push] Device:', Device.modelName, Device.osName, Device.osVersion);
+
+    const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
     const token = tokenData.data;
     console.log('[Push] Got Expo push token:', token);
 
