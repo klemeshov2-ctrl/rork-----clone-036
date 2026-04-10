@@ -19,6 +19,7 @@
     },
     "android": {
       "package": "app.rork.zhurnal_mastera",
+      "googleServicesFile": "./google-services.json",
       "versionCode": 3,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
