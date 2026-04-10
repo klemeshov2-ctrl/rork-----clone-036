@@ -12,6 +12,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   TouchableWithoutFeedback,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
@@ -105,7 +106,11 @@ export default function AccessCodeScreen() {
         keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}
       >
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-      <View style={styles.content}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        bounces={false}
+      >
         <View style={styles.iconCircle}>
           <KeyRound size={40} color={colors.primary} />
         </View>
@@ -143,7 +148,7 @@ export default function AccessCodeScreen() {
             <Text style={styles.submitButtonText}>Подтвердить</Text>
           )}
         </TouchableOpacity>
-      </View>
+      </ScrollView>
         </TouchableWithoutFeedback>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -160,10 +165,11 @@ function createStyles(colors: ThemeColors) {
       flex: 1,
     },
     content: {
-      flex: 1,
+      flexGrow: 1,
       alignItems: 'center',
       justifyContent: 'center',
       paddingHorizontal: 32,
+      paddingBottom: 40,
     },
     iconCircle: {
       width: 80,
