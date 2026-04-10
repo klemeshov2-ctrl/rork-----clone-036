@@ -121,7 +121,8 @@ function ChatCard({
 }) {
   const isMaster = chat.masterId === userId;
   const partnerName = isMaster ? chat.subscriberName : chat.masterName;
-  const hasUnread = chat.unreadCount > 0;
+  const myUnread = isMaster ? chat.unreadForMaster : chat.unreadForSubscriber;
+  const hasUnread = myUnread > 0;
 
   return (
     <TouchableOpacity
@@ -168,7 +169,7 @@ function ChatCard({
                   paddingHorizontal: 6,
                 }}>
                   <Text style={{ fontSize: 11, fontWeight: '700' as const, color: '#fff' }}>
-                    {chat.unreadCount > 99 ? '99+' : chat.unreadCount}
+                    {myUnread > 99 ? '99+' : myUnread}
                   </Text>
                 </View>
               )}

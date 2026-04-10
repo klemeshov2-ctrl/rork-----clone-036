@@ -267,7 +267,9 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
             subscriberName: typeof data.subscriberName === 'string' ? data.subscriberName : 'Подписчик',
             lastMessage: typeof data.lastMessage === 'string' ? data.lastMessage : '',
             lastMessageTime,
-            unreadCount: typeof data.unreadCount === 'number' ? data.unreadCount : 0,
+            lastSenderId: typeof data.lastSenderId === 'string' ? data.lastSenderId : '',
+            unreadForMaster: typeof data.unreadForMaster === 'number' ? data.unreadForMaster : (typeof data.unreadCount === 'number' ? data.unreadCount : 0),
+            unreadForSubscriber: typeof data.unreadForSubscriber === 'number' ? data.unreadForSubscriber : 0,
           });
         });
         return docs;
@@ -323,14 +325,15 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
     if (!userId) return 0;
     let count = 0;
     chats.forEach(chat => {
-      const isMasterUser = chat.masterId === userId || relevantMasterIds.includes(chat.masterId);
-      const isSubscriberUser = chat.subscriberId === userId;
-      if (isMasterUser || isSubscriberUser) {
-        count += chat.unreadCount || 0;
+      const iAmMaster = chat.masterId === userId || (!isSubscriberProfile && relevantMasterIds.includes(chat.masterId));
+      if (iAmMaster) {
+        count += chat.unreadForMaster || 0;
+      } else if (chat.subscriberId === userId) {
+        count += chat.unreadForSubscriber || 0;
       }
     });
     return count;
-  }, [chats, userId, relevantMasterIds]);
+  }, [chats, userId, relevantMasterIds, isSubscriberProfile]);
 
   const unloadMessages = useCallback(() => {
     console.log('[Chat] Unloading messages, clearing active chat ref');
@@ -491,13 +494,21 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
         const activeSub = subscriptions.find(s => s.masterId === normalizedMasterId);
 
         if (chatSnap.exists()) {
+          const existingData = chatSnap.data();
           const updateData: Record<string, unknown> = {
             lastMessage: text,
             lastMessageTime: serverTimestamp(),
-            unreadCount: (chatSnap.data().unreadCount || 0) + 1,
+            lastSenderId: userId,
             ...(isMaster ? { masterName: resolvedName } : { subscriberName: resolvedName }),
           };
-          if (!chatSnap.data().participants) {
+          if (isMaster) {
+            updateData.unreadForSubscriber = (existingData.unreadForSubscriber || 0) + 1;
+            updateData.unreadForMaster = 0;
+          } else {
+            updateData.unreadForMaster = (existingData.unreadForMaster || 0) + 1;
+            updateData.unreadForSubscriber = 0;
+          }
+          if (!existingData.participants) {
             updateData.participants = [normalizedMasterId, subscriberId];
           }
           await updateDoc(chatRef, updateData);
@@ -510,7 +521,9 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
             subscriberName: isMaster ? (activeSub?.name || 'Подписчик') : resolvedName,
             lastMessage: text,
             lastMessageTime: serverTimestamp(),
-            unreadCount: 1,
+            lastSenderId: userId,
+            unreadForMaster: isMaster ? 0 : 1,
+            unreadForSubscriber: isMaster ? 1 : 0,
           });
         }
         console.log('[Chat] Chat doc updated/created');
@@ -584,7 +597,9 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
     const chatDocId = getChatDocId(masterId, subscriberId);
     const chatRef = doc(firestore, 'chats', chatDocId);
 
-    updateDoc(chatRef, { unreadCount: 0 }).catch((err) => {
+    const iAmMaster = !isSubscriberProfile && (masterId === userId || relevantMasterIds.includes(masterId));
+    const resetField = iAmMaster ? 'unreadForMaster' : 'unreadForSubscriber';
+    updateDoc(chatRef, { [resetField]: 0 }).catch((err) => {
       console.log('[Chat] markChatAsRead error:', err?.message);
     });
 

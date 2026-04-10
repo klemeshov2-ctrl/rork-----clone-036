@@ -495,9 +495,10 @@ export default function NotificationsScreen() {
     const info = new Map<string, { lastMessage: string; unreadCount: number }>();
     if (!currentUserId) return info;
     chats.forEach(chat => {
+      const iAmMaster = chat.masterId === currentUserId;
       info.set(chat.subscriberId, {
         lastMessage: chat.lastMessage || '',
-        unreadCount: chat.unreadCount || 0,
+        unreadCount: iAmMaster ? (chat.unreadForMaster || 0) : (chat.unreadForSubscriber || 0),
       });
     });
     return info;

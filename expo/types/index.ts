@@ -217,5 +217,7 @@ export interface ChatDialog {
   subscriberName: string;
   lastMessage: string;
   lastMessageTime: number;
-  unreadCount: number;
+  lastSenderId: string;
+  unreadForMaster: number;
+  unreadForSubscriber: number;
 }
