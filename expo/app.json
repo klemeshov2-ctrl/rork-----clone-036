@@ -45,6 +45,9 @@
       "typedRoutes": true
     },
     "extra": {
+      "eas": {
+        "projectId": "zhurnal-mastera"
+      },
       "firebase": {
         "apiKey": "AIzaSyA7xe_YC-wQ8bKinUFSLClf5C5fGIQ2fG0",
         "authDomain": "zhurnal-mastera.firebaseapp.com",
