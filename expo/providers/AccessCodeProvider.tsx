@@ -5,7 +5,7 @@ import * as Crypto from 'expo-crypto';
 import createContextHook from '@nkzw/create-context-hook';
 
 const ACCESS_VALIDATED_KEY = '@access_code_validated';
-const VALID_CODE_HASH = '168f1447d3ca61b84eedd6612caef3ee9b60b480c4e7b7814a6fa2beb1b706cc';
+const VALID_CODE_HASH = 'f6b0a3297a391f9e909747da0f8d1e4a8470b3637b233ec9f7703ff01a4f3f71';
 
 interface AccessCodeContextType {
   isAccessGranted: boolean;
