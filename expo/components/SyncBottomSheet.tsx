@@ -135,9 +135,8 @@ export function SyncBottomSheet() {
   const handlePublish = useCallback(async () => {
     try {
       await publishBackup();
-      Alert.alert('Готово', 'Данные опубликованы');
     } catch (e: any) {
-      Alert.alert('Ошибка', e?.message || 'Не удалось опубликовать');
+      console.log('[SyncBottomSheet] Publish error:', e?.message);
     }
   }, [publishBackup]);
 
@@ -145,20 +144,12 @@ export function SyncBottomSheet() {
     if (isMasterProfile) {
       const result = await masterSyncNow();
       if (result.error) {
-        Alert.alert('Ошибка', result.error);
-      } else if (result.updated) {
-        Alert.alert('Готово', 'Данные обновлены');
-      } else {
-        Alert.alert('Актуально', 'Новых данных нет');
+        console.log('[SyncBottomSheet] Master sync error:', result.error);
       }
     } else if (activeSub) {
       const result = await syncSubscription(activeSub.id);
       if (result.error) {
-        Alert.alert('Ошибка', result.error);
-      } else if (result.updated) {
-        Alert.alert('Готово', 'Данные обновлены');
-      } else {
-        Alert.alert('Актуально', 'Новых данных нет');
+        console.log('[SyncBottomSheet] Sub sync error:', result.error);
       }
     }
   }, [isMasterProfile, masterSyncNow, activeSub, syncSubscription]);
