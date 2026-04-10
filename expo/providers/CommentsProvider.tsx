@@ -20,6 +20,7 @@ import { useBackup } from './BackupProvider';
 import { useProfile } from './ProfileProvider';
 import type { Comment, CommentEntityType } from '@/types';
 import * as Notifications from 'expo-notifications';
+import { sendCommentPush } from '@/lib/pushNotifications';
 
 const DISPLAY_NAME_KEY = '@user_display_name';
 const READ_COMMENT_IDS_KEY = '@read_comment_ids';
@@ -481,6 +482,19 @@ export const [CommentsProvider, useComments] = createContextHook<CommentsContext
       try {
         await addDoc(collection(firestore, 'comments'), commentData);
         console.log('[Comments] Comment added successfully');
+
+        if (resolvedMasterId) {
+          sendCommentPush(
+            resolvedMasterId,
+            resolvedName,
+            text,
+            String(entityType),
+            String(entityId),
+            userId,
+          ).catch(err => {
+            console.log('[Comments] Push notification send error:', err);
+          });
+        }
       } catch (firestoreErr: unknown) {
         const errMsg = firestoreErr instanceof Error ? firestoreErr.message : String(firestoreErr);
         console.log('[Comments] Firestore addDoc error:', errMsg);

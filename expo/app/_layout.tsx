@@ -21,6 +21,7 @@ import { PinAuth } from "@/components/PinAuth";
 import { initLogger } from "@/lib/logger";
 import { db } from "@/config/firebase";
 import { requestNotificationPermissions, setupNotificationChannels } from "@/lib/notifications";
+import { registerPushToken } from "@/lib/pushNotifications";
 import { ActivityIndicator, Platform, View, Image, Text, StyleSheet } from "react-native";
 import * as Notifications from 'expo-notifications';
 import { useRouter } from 'expo-router';
@@ -93,6 +94,21 @@ function useBadgeCount() {
   }, [commentUnread, chatUnread]);
 }
 
+function PushTokenRegistrar() {
+  const { userId } = useComments();
+
+  useEffect(() => {
+    if (userId && Platform.OS !== 'web') {
+      console.log('[Push] Registering push token for userId:', userId);
+      registerPushToken(userId).catch(err => {
+        console.log('[Push] Token registration error:', err);
+      });
+    }
+  }, [userId]);
+
+  return null;
+}
+
 function BadgeUpdater() {
   useBadgeCount();
   return null;
@@ -151,6 +167,7 @@ function AuthGate() {
 
   return (
     <>
+      <PushTokenRegistrar />
       <BadgeUpdater />
       <RootLayoutNav />
     </>

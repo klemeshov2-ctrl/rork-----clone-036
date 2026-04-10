@@ -25,6 +25,7 @@ import { useProfile } from './ProfileProvider';
 import { useComments } from './CommentsProvider';
 import type { ChatMessage, ChatDialog } from '@/types';
 import * as Notifications from 'expo-notifications';
+import { sendChatPush } from '@/lib/pushNotifications';
 
 const DISPLAY_NAME_KEY = '@user_display_name';
 const READ_MESSAGE_IDS_KEY = '@read_message_ids';
@@ -504,6 +505,16 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
           });
         }
         console.log('[Chat] Chat doc updated/created');
+
+        const recipientIds: string[] = [];
+        if (userId === masterId) {
+          recipientIds.push(subscriberId);
+        } else {
+          recipientIds.push(masterId);
+        }
+        sendChatPush(recipientIds, resolvedName, text, masterId, subscriberId, userId).catch(err => {
+          console.log('[Chat] Push notification send error:', err);
+        });
       } catch (chatErr: unknown) {
         const errMsg = chatErr instanceof Error ? chatErr.message : String(chatErr);
         console.log('[Chat] Failed to update chat doc (non-critical):', errMsg);
