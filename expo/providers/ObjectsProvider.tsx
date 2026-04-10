@@ -54,75 +54,110 @@ export const [ObjectsProvider, useObjects] = createContextHook<ObjectsContextTyp
   const [isLoading, setIsLoading] = useState(true);
 
   const loadGroups = useCallback(async () => {
-    if (!db) return;
-    const result = await db.getAllAsync<ObjectGroup>(
-      `SELECT id, name, created_at as createdAt FROM object_groups ORDER BY name`
-    );
-    setGroups(result);
-  }, [db]);
+    if (!db || !isReady) {
+      console.log('[ObjectsProvider] loadGroups: DB not ready, skipping');
+      return;
+    }
+    try {
+      const result = await db.getAllAsync<ObjectGroup>(
+        `SELECT id, name, created_at as createdAt FROM object_groups ORDER BY name`
+      );
+      setGroups(result);
+    } catch (e: any) {
+      console.error('[ObjectsProvider] loadGroups failed:', e?.message);
+    }
+  }, [db, isReady]);
 
   const loadObjects = useCallback(async () => {
-    if (!db) return;
-    const result = await db.getAllAsync<any>(
-      `SELECT id, name, address, group_id as groupId, systems, created_at as createdAt, updated_at as updatedAt, sync_status as syncStatus 
-       FROM objects ORDER BY updated_at DESC`
-    );
-    const parsed: ObjectItem[] = result.map((row: any) => ({
-      ...row,
-      groupId: row.groupId || undefined,
-      systems: row.systems ? JSON.parse(row.systems) : [],
-    }));
-    setObjects(parsed);
-  }, [db]);
+    if (!db || !isReady) {
+      console.log('[ObjectsProvider] loadObjects: DB not ready, skipping');
+      return;
+    }
+    try {
+      const result = await db.getAllAsync<any>(
+        `SELECT id, name, address, group_id as groupId, systems, created_at as createdAt, updated_at as updatedAt, sync_status as syncStatus 
+         FROM objects ORDER BY updated_at DESC`
+      );
+      const parsed: ObjectItem[] = result.map((row: any) => ({
+        ...row,
+        groupId: row.groupId || undefined,
+        systems: row.systems ? JSON.parse(row.systems) : [],
+      }));
+      setObjects(parsed);
+    } catch (e: any) {
+      console.error('[ObjectsProvider] loadObjects failed:', e?.message);
+    }
+  }, [db, isReady]);
 
   const loadContacts = useCallback(async () => {
-    if (!db) return;
-    const result = await db.getAllAsync<ContactPerson>(
-      `SELECT id, object_id as objectId, full_name as fullName, position, phone, email, created_at as createdAt 
-       FROM contacts ORDER BY created_at`
-    );
-    const grouped: Record<string, ContactPerson[]> = {};
-    result.forEach(contact => {
-      if (!grouped[contact.objectId]) grouped[contact.objectId] = [];
-      grouped[contact.objectId].push(contact);
-    });
-    setContacts(grouped);
-  }, [db]);
+    if (!db || !isReady) {
+      console.log('[ObjectsProvider] loadContacts: DB not ready, skipping');
+      return;
+    }
+    try {
+      const result = await db.getAllAsync<ContactPerson>(
+        `SELECT id, object_id as objectId, full_name as fullName, position, phone, email, created_at as createdAt 
+         FROM contacts ORDER BY created_at`
+      );
+      const grouped: Record<string, ContactPerson[]> = {};
+      result.forEach(contact => {
+        if (!grouped[contact.objectId]) grouped[contact.objectId] = [];
+        grouped[contact.objectId].push(contact);
+      });
+      setContacts(grouped);
+    } catch (e: any) {
+      console.error('[ObjectsProvider] loadContacts failed:', e?.message);
+    }
+  }, [db, isReady]);
 
   const loadDocuments = useCallback(async () => {
-    if (!db) return;
-    const result = await db.getAllAsync<ObjectDocument>(
-      `SELECT id, object_id as objectId, name, file_path as filePath, file_url as fileUrl, file_size as fileSize, uploaded_at as uploadedAt 
-       FROM object_documents ORDER BY uploaded_at DESC`
-    );
-    const grouped: Record<string, ObjectDocument[]> = {};
-    result.forEach(doc => {
-      if (!grouped[doc.objectId]) grouped[doc.objectId] = [];
-      grouped[doc.objectId].push(doc);
-    });
-    setDocuments(grouped);
-  }, [db]);
+    if (!db || !isReady) {
+      console.log('[ObjectsProvider] loadDocuments: DB not ready, skipping');
+      return;
+    }
+    try {
+      const result = await db.getAllAsync<ObjectDocument>(
+        `SELECT id, object_id as objectId, name, file_path as filePath, file_url as fileUrl, file_size as fileSize, uploaded_at as uploadedAt 
+         FROM object_documents ORDER BY uploaded_at DESC`
+      );
+      const grouped: Record<string, ObjectDocument[]> = {};
+      result.forEach(doc => {
+        if (!grouped[doc.objectId]) grouped[doc.objectId] = [];
+        grouped[doc.objectId].push(doc);
+      });
+      setDocuments(grouped);
+    } catch (e: any) {
+      console.error('[ObjectsProvider] loadDocuments failed:', e?.message);
+    }
+  }, [db, isReady]);
 
   const loadWorkEntries = useCallback(async () => {
-    if (!db) return;
-    const result = await db.getAllAsync<any>(
-      `SELECT id, object_id as objectId, description, photos, attached_pdf_id as attachedPdfId, 
-       used_materials as usedMaterials, system_name as systemName, latitude, longitude, created_at as createdAt, sync_status as syncStatus 
-       FROM work_entries ORDER BY created_at DESC`
-    );
-    const parsed: WorkEntry[] = result.map((row: any) => ({
-      ...row,
-      photos: row.photos ? JSON.parse(row.photos) : [],
-      usedMaterials: row.usedMaterials ? JSON.parse(row.usedMaterials) : [],
-      systemName: row.systemName || undefined,
-    }));
-    const grouped: Record<string, WorkEntry[]> = {};
-    parsed.forEach(entry => {
-      if (!grouped[entry.objectId]) grouped[entry.objectId] = [];
-      grouped[entry.objectId].push(entry);
-    });
-    setWorkEntries(grouped);
-  }, [db]);
+    if (!db || !isReady) {
+      console.log('[ObjectsProvider] loadWorkEntries: DB not ready, skipping');
+      return;
+    }
+    try {
+      const result = await db.getAllAsync<any>(
+        `SELECT id, object_id as objectId, description, photos, attached_pdf_id as attachedPdfId, 
+         used_materials as usedMaterials, system_name as systemName, latitude, longitude, created_at as createdAt, sync_status as syncStatus 
+         FROM work_entries ORDER BY created_at DESC`
+      );
+      const parsed: WorkEntry[] = result.map((row: any) => ({
+        ...row,
+        photos: row.photos ? JSON.parse(row.photos) : [],
+        usedMaterials: row.usedMaterials ? JSON.parse(row.usedMaterials) : [],
+        systemName: row.systemName || undefined,
+      }));
+      const grouped: Record<string, WorkEntry[]> = {};
+      parsed.forEach(entry => {
+        if (!grouped[entry.objectId]) grouped[entry.objectId] = [];
+        grouped[entry.objectId].push(entry);
+      });
+      setWorkEntries(grouped);
+    } catch (e: any) {
+      console.error('[ObjectsProvider] loadWorkEntries failed:', e?.message);
+    }
+  }, [db, isReady]);
 
   const refreshData = useCallback(async () => {
     if (!db) {
@@ -149,67 +184,97 @@ export const [ObjectsProvider, useObjects] = createContextHook<ObjectsContextTyp
   }, [isReady, refreshData]);
 
   const addGroup = useCallback(async (name: string): Promise<ObjectGroup> => {
-    if (!db) throw new Error('Database not ready');
+    if (!db || !isReady) throw new Error('Database not ready');
     const id = generateId();
     const now = Date.now();
-    await db.runAsync(
-      'INSERT INTO object_groups (id, name, created_at) VALUES (?, ?, ?)',
-      [id, name, now]
-    );
-    const group: ObjectGroup = { id, name, createdAt: now };
-    await loadGroups();
-    return group;
-  }, [db, loadGroups]);
+    try {
+      await db.runAsync(
+        'INSERT INTO object_groups (id, name, created_at) VALUES (?, ?, ?)',
+        [id, name, now]
+      );
+      const group: ObjectGroup = { id, name, createdAt: now };
+      await loadGroups();
+      return group;
+    } catch (e: any) {
+      console.error('[ObjectsProvider] addGroup failed:', e?.message);
+      throw e;
+    }
+  }, [db, isReady, loadGroups]);
 
   const updateGroup = useCallback(async (id: string, name: string) => {
-    if (!db) throw new Error('Database not ready');
-    await db.runAsync('UPDATE object_groups SET name = ? WHERE id = ?', [name, id]);
-    await loadGroups();
-  }, [db, loadGroups]);
+    if (!db || !isReady) throw new Error('Database not ready');
+    try {
+      await db.runAsync('UPDATE object_groups SET name = ? WHERE id = ?', [name, id]);
+      await loadGroups();
+    } catch (e: any) {
+      console.error('[ObjectsProvider] updateGroup failed:', e?.message);
+      throw e;
+    }
+  }, [db, isReady, loadGroups]);
 
   const deleteGroup = useCallback(async (id: string) => {
-    if (!db) throw new Error('Database not ready');
-    await db.runAsync('UPDATE objects SET group_id = NULL WHERE group_id = ?', [id]);
-    await db.runAsync('DELETE FROM object_groups WHERE id = ?', [id]);
-    await Promise.all([loadGroups(), loadObjects()]);
-  }, [db, loadGroups, loadObjects]);
+    if (!db || !isReady) throw new Error('Database not ready');
+    try {
+      await db.runAsync('UPDATE objects SET group_id = NULL WHERE group_id = ?', [id]);
+      await db.runAsync('DELETE FROM object_groups WHERE id = ?', [id]);
+      await Promise.all([loadGroups(), loadObjects()]);
+    } catch (e: any) {
+      console.error('[ObjectsProvider] deleteGroup failed:', e?.message);
+      throw e;
+    }
+  }, [db, isReady, loadGroups, loadObjects]);
 
   const moveObjectToGroup = useCallback(async (objectId: string, groupId: string | null) => {
-    if (!db) throw new Error('Database not ready');
-    await db.runAsync(
-      'UPDATE objects SET group_id = ?, updated_at = ? WHERE id = ?',
-      [groupId, Date.now(), objectId]
-    );
-    await loadObjects();
-  }, [db, loadObjects]);
+    if (!db || !isReady) throw new Error('Database not ready');
+    try {
+      await db.runAsync(
+        'UPDATE objects SET group_id = ?, updated_at = ? WHERE id = ?',
+        [groupId, Date.now(), objectId]
+      );
+      await loadObjects();
+    } catch (e: any) {
+      console.error('[ObjectsProvider] moveObjectToGroup failed:', e?.message);
+      throw e;
+    }
+  }, [db, isReady, loadObjects]);
 
   const updateObjectSystems = useCallback(async (objectId: string, systems: string[]) => {
-    if (!db) throw new Error('Database not ready');
-    await db.runAsync(
-      'UPDATE objects SET systems = ?, updated_at = ? WHERE id = ?',
-      [JSON.stringify(systems), Date.now(), objectId]
-    );
-    await loadObjects();
-  }, [db, loadObjects]);
+    if (!db || !isReady) throw new Error('Database not ready');
+    try {
+      await db.runAsync(
+        'UPDATE objects SET systems = ?, updated_at = ? WHERE id = ?',
+        [JSON.stringify(systems), Date.now(), objectId]
+      );
+      await loadObjects();
+    } catch (e: any) {
+      console.error('[ObjectsProvider] updateObjectSystems failed:', e?.message);
+      throw e;
+    }
+  }, [db, isReady, loadObjects]);
 
   const addObject = useCallback(async (name: string, address: string, groupId?: string): Promise<ObjectItem> => {
-    if (!db) throw new Error('Database not ready');
+    if (!db || !isReady) throw new Error('Database not ready');
     const id = generateId();
     const now = Date.now();
     const newObject: ObjectItem = {
       id, name, address, groupId, systems: [],
       createdAt: now, updatedAt: now, syncStatus: 'pending',
     };
-    await db.runAsync(
-      'INSERT INTO objects (id, name, address, group_id, systems, created_at, updated_at, sync_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      [id, name, address, groupId || null, '[]', now, now, 'pending']
-    );
-    await loadObjects();
-    return newObject;
-  }, [db, loadObjects]);
+    try {
+      await db.runAsync(
+        'INSERT INTO objects (id, name, address, group_id, systems, created_at, updated_at, sync_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [id, name, address, groupId || null, '[]', now, now, 'pending']
+      );
+      await loadObjects();
+      return newObject;
+    } catch (e: any) {
+      console.error('[ObjectsProvider] addObject failed:', e?.message);
+      throw e;
+    }
+  }, [db, isReady, loadObjects]);
 
   const updateObject = useCallback(async (id: string, updates: Partial<ObjectItem>) => {
-    if (!db) throw new Error('Database not ready');
+    if (!db || !isReady) throw new Error('Database not ready');
     const sets: string[] = [];
     const values: any[] = [];
     if (updates.name !== undefined) { sets.push('name = ?'); values.push(updates.name); }
@@ -219,43 +284,53 @@ export const [ObjectsProvider, useObjects] = createContextHook<ObjectsContextTyp
     sets.push('updated_at = ?'); values.push(Date.now());
     sets.push('sync_status = ?'); values.push('pending');
     values.push(id);
-    await db.runAsync(`UPDATE objects SET ${sets.join(', ')} WHERE id = ?`, values);
-    await loadObjects();
-  }, [db, loadObjects]);
+    try {
+      await db.runAsync(`UPDATE objects SET ${sets.join(', ')} WHERE id = ?`, values);
+      await loadObjects();
+    } catch (e: any) {
+      console.error('[ObjectsProvider] updateObject failed:', e?.message);
+      throw e;
+    }
+  }, [db, isReady, loadObjects]);
 
   const deleteObject = useCallback(async (id: string) => {
-    if (!db) throw new Error('Database not ready');
+    if (!db || !isReady) throw new Error('Database not ready');
 
-    const filesToDelete: string[] = [];
+    try {
+      const filesToDelete: string[] = [];
 
-    const docs = await db.getAllAsync<{ file_path: string | null }>(
-      'SELECT file_path FROM object_documents WHERE object_id = ?', [id]
-    );
-    for (const doc of docs) {
-      if (doc.file_path) filesToDelete.push(doc.file_path);
-    }
-
-    const entries = await db.getAllAsync<{ photos: string | null }>(
-      'SELECT photos FROM work_entries WHERE object_id = ?', [id]
-    );
-    for (const entry of entries) {
-      if (entry.photos) {
-        try {
-          const photos: string[] = JSON.parse(entry.photos);
-          if (Array.isArray(photos)) filesToDelete.push(...photos);
-        } catch {}
+      const docs = await db.getAllAsync<{ file_path: string | null }>(
+        'SELECT file_path FROM object_documents WHERE object_id = ?', [id]
+      );
+      for (const doc of docs) {
+        if (doc.file_path) filesToDelete.push(doc.file_path);
       }
+
+      const entries = await db.getAllAsync<{ photos: string | null }>(
+        'SELECT photos FROM work_entries WHERE object_id = ?', [id]
+      );
+      for (const entry of entries) {
+        if (entry.photos) {
+          try {
+            const photos: string[] = JSON.parse(entry.photos);
+            if (Array.isArray(photos)) filesToDelete.push(...photos);
+          } catch {}
+        }
+      }
+
+      console.log('[ObjectsProvider] deleteObject', id, '- files to delete:', filesToDelete.length);
+      await deleteFilesFromUnifiedDir(filesToDelete);
+
+      await db.runAsync('DELETE FROM work_entries WHERE object_id = ?', [id]);
+      await db.runAsync('DELETE FROM object_documents WHERE object_id = ?', [id]);
+      await db.runAsync('DELETE FROM contacts WHERE object_id = ?', [id]);
+      await db.runAsync('DELETE FROM objects WHERE id = ?', [id]);
+      await Promise.all([loadObjects(), loadWorkEntries(), loadDocuments(), loadContacts()]);
+    } catch (e: any) {
+      console.error('[ObjectsProvider] deleteObject failed:', e?.message);
+      throw e;
     }
-
-    console.log('[ObjectsProvider] deleteObject', id, '- files to delete:', filesToDelete.length);
-    await deleteFilesFromUnifiedDir(filesToDelete);
-
-    await db.runAsync('DELETE FROM work_entries WHERE object_id = ?', [id]);
-    await db.runAsync('DELETE FROM object_documents WHERE object_id = ?', [id]);
-    await db.runAsync('DELETE FROM contacts WHERE object_id = ?', [id]);
-    await db.runAsync('DELETE FROM objects WHERE id = ?', [id]);
-    await Promise.all([loadObjects(), loadWorkEntries(), loadDocuments(), loadContacts()]);
-  }, [db, loadObjects, loadWorkEntries, loadDocuments, loadContacts]);
+  }, [db, isReady, loadObjects, loadWorkEntries, loadDocuments, loadContacts]);
 
   const getObject = useCallback((id: string) => objects.find(o => o.id === id), [objects]);
   const searchObjects = useCallback((query: string) => {
@@ -267,17 +342,22 @@ export const [ObjectsProvider, useObjects] = createContextHook<ObjectsContextTyp
   }, [objects]);
 
   const addContact = useCallback(async (objectId: string, contact: Omit<ContactPerson, 'id' | 'objectId' | 'createdAt'>) => {
-    if (!db) throw new Error('Database not ready');
+    if (!db || !isReady) throw new Error('Database not ready');
     const id = generateId();
-    await db.runAsync(
-      'INSERT INTO contacts (id, object_id, full_name, position, phone, email, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [id, objectId, contact.fullName, contact.position, contact.phone, contact.email || null, Date.now()]
-    );
-    await loadContacts();
-  }, [db, loadContacts]);
+    try {
+      await db.runAsync(
+        'INSERT INTO contacts (id, object_id, full_name, position, phone, email, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [id, objectId, contact.fullName, contact.position, contact.phone, contact.email || null, Date.now()]
+      );
+      await loadContacts();
+    } catch (e: any) {
+      console.error('[ObjectsProvider] addContact failed:', e?.message);
+      throw e;
+    }
+  }, [db, isReady, loadContacts]);
 
   const updateContact = useCallback(async (contactId: string, updates: Partial<ContactPerson>) => {
-    if (!db) throw new Error('Database not ready');
+    if (!db || !isReady) throw new Error('Database not ready');
     const sets: string[] = [];
     const values: any[] = [];
     if (updates.fullName !== undefined) { sets.push('full_name = ?'); values.push(updates.fullName); }
@@ -285,58 +365,83 @@ export const [ObjectsProvider, useObjects] = createContextHook<ObjectsContextTyp
     if (updates.phone !== undefined) { sets.push('phone = ?'); values.push(updates.phone); }
     if (updates.email !== undefined) { sets.push('email = ?'); values.push(updates.email); }
     values.push(contactId);
-    await db.runAsync(`UPDATE contacts SET ${sets.join(', ')} WHERE id = ?`, values);
-    await loadContacts();
-  }, [db, loadContacts]);
+    try {
+      await db.runAsync(`UPDATE contacts SET ${sets.join(', ')} WHERE id = ?`, values);
+      await loadContacts();
+    } catch (e: any) {
+      console.error('[ObjectsProvider] updateContact failed:', e?.message);
+      throw e;
+    }
+  }, [db, isReady, loadContacts]);
 
   const deleteContact = useCallback(async (contactId: string) => {
-    if (!db) throw new Error('Database not ready');
-    await db.runAsync('DELETE FROM contacts WHERE id = ?', [contactId]);
-    await loadContacts();
-  }, [db, loadContacts]);
+    if (!db || !isReady) throw new Error('Database not ready');
+    try {
+      await db.runAsync('DELETE FROM contacts WHERE id = ?', [contactId]);
+      await loadContacts();
+    } catch (e: any) {
+      console.error('[ObjectsProvider] deleteContact failed:', e?.message);
+      throw e;
+    }
+  }, [db, isReady, loadContacts]);
 
   const getContactsByObject = useCallback((objectId: string) => contacts[objectId] || [], [contacts]);
 
   const addDocument = useCallback(async (objectId: string, document: Omit<ObjectDocument, 'id' | 'objectId'>) => {
-    if (!db) throw new Error('Database not ready');
+    if (!db || !isReady) throw new Error('Database not ready');
     const id = generateId();
-    await db.runAsync(
-      'INSERT INTO object_documents (id, object_id, name, file_path, file_size, uploaded_at) VALUES (?, ?, ?, ?, ?, ?)',
-      [id, objectId, document.name, document.filePath, document.fileSize, document.uploadedAt]
-    );
-    await loadDocuments();
-  }, [db, loadDocuments]);
+    try {
+      await db.runAsync(
+        'INSERT INTO object_documents (id, object_id, name, file_path, file_size, uploaded_at) VALUES (?, ?, ?, ?, ?, ?)',
+        [id, objectId, document.name, document.filePath, document.fileSize, document.uploadedAt]
+      );
+      await loadDocuments();
+    } catch (e: any) {
+      console.error('[ObjectsProvider] addDocument failed:', e?.message);
+      throw e;
+    }
+  }, [db, isReady, loadDocuments]);
 
   const updateDocument = useCallback(async (documentId: string, updates: Partial<ObjectDocument>) => {
-    if (!db) throw new Error('Database not ready');
+    if (!db || !isReady) throw new Error('Database not ready');
     const sets: string[] = [];
     const values: any[] = [];
     if (updates.name !== undefined) { sets.push('name = ?'); values.push(updates.name); }
     if (sets.length === 0) return;
     values.push(documentId);
-    await db.runAsync(`UPDATE object_documents SET ${sets.join(', ')} WHERE id = ?`, values);
-    await loadDocuments();
-  }, [db, loadDocuments]);
+    try {
+      await db.runAsync(`UPDATE object_documents SET ${sets.join(', ')} WHERE id = ?`, values);
+      await loadDocuments();
+    } catch (e: any) {
+      console.error('[ObjectsProvider] updateDocument failed:', e?.message);
+      throw e;
+    }
+  }, [db, isReady, loadDocuments]);
 
   const deleteDocument = useCallback(async (documentId: string) => {
-    if (!db) throw new Error('Database not ready');
+    if (!db || !isReady) throw new Error('Database not ready');
 
-    const doc = await db.getFirstAsync<{ file_path: string | null }>(
-      'SELECT file_path FROM object_documents WHERE id = ?', [documentId]
-    );
-    if (doc?.file_path) {
-      console.log('[ObjectsProvider] deleteDocument', documentId, '- deleting file:', doc.file_path);
-      await deleteFilesFromUnifiedDir([doc.file_path]);
+    try {
+      const doc = await db.getFirstAsync<{ file_path: string | null }>(
+        'SELECT file_path FROM object_documents WHERE id = ?', [documentId]
+      );
+      if (doc?.file_path) {
+        console.log('[ObjectsProvider] deleteDocument', documentId, '- deleting file:', doc.file_path);
+        await deleteFilesFromUnifiedDir([doc.file_path]);
+      }
+
+      await db.runAsync('DELETE FROM object_documents WHERE id = ?', [documentId]);
+      await loadDocuments();
+    } catch (e: any) {
+      console.error('[ObjectsProvider] deleteDocument failed:', e?.message);
+      throw e;
     }
-
-    await db.runAsync('DELETE FROM object_documents WHERE id = ?', [documentId]);
-    await loadDocuments();
-  }, [db, loadDocuments]);
+  }, [db, isReady, loadDocuments]);
 
   const getDocumentsByObject = useCallback((objectId: string) => documents[objectId] || [], [documents]);
 
   const addWorkEntry = useCallback(async (objectId: string, entry: Omit<WorkEntry, 'id' | 'objectId' | 'createdAt'>) => {
-    if (!db) throw new Error('Database not ready');
+    if (!db || !isReady) throw new Error('Database not ready');
     const id = generateId();
     const now = Date.now();
     const photosJson = JSON.stringify(entry.photos ?? []);
@@ -346,16 +451,21 @@ export const [ObjectsProvider, useObjects] = createContextHook<ObjectsContextTyp
     const lat = entry.latitude ?? null;
     const lon = entry.longitude ?? null;
     console.log('[ObjectsProvider] addWorkEntry params:', { id, objectId, descLen: entry.description.length, photosJson, pdfId, materialsJson, systemName, lat, lon, now });
-    await db.runAsync(
-      `INSERT INTO work_entries (id, object_id, description, photos, attached_pdf_id, used_materials, system_name, latitude, longitude, created_at, sync_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, objectId, entry.description, photosJson, pdfId, materialsJson, systemName, lat, lon, now, 'pending']
-    );
-    console.log('[ObjectsProvider] addWorkEntry success');
-    await loadWorkEntries();
-  }, [db, loadWorkEntries]);
+    try {
+      await db.runAsync(
+        `INSERT INTO work_entries (id, object_id, description, photos, attached_pdf_id, used_materials, system_name, latitude, longitude, created_at, sync_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [id, objectId, entry.description, photosJson, pdfId, materialsJson, systemName, lat, lon, now, 'pending']
+      );
+      console.log('[ObjectsProvider] addWorkEntry success');
+      await loadWorkEntries();
+    } catch (e: any) {
+      console.error('[ObjectsProvider] addWorkEntry failed:', e?.message);
+      throw e;
+    }
+  }, [db, isReady, loadWorkEntries]);
 
   const updateWorkEntry = useCallback(async (entryId: string, updates: Partial<WorkEntry>) => {
-    if (!db) throw new Error('Database not ready');
+    if (!db || !isReady) throw new Error('Database not ready');
     const sets: string[] = [];
     const values: any[] = [];
     if (updates.description !== undefined) { sets.push('description = ?'); values.push(updates.description); }
@@ -366,29 +476,39 @@ export const [ObjectsProvider, useObjects] = createContextHook<ObjectsContextTyp
     if (updates.createdAt !== undefined) { sets.push('created_at = ?'); values.push(updates.createdAt); }
     sets.push('sync_status = ?'); values.push('pending');
     values.push(entryId);
-    await db.runAsync(`UPDATE work_entries SET ${sets.join(', ')} WHERE id = ?`, values);
-    await loadWorkEntries();
-  }, [db, loadWorkEntries]);
+    try {
+      await db.runAsync(`UPDATE work_entries SET ${sets.join(', ')} WHERE id = ?`, values);
+      await loadWorkEntries();
+    } catch (e: any) {
+      console.error('[ObjectsProvider] updateWorkEntry failed:', e?.message);
+      throw e;
+    }
+  }, [db, isReady, loadWorkEntries]);
 
   const deleteWorkEntry = useCallback(async (entryId: string) => {
-    if (!db) throw new Error('Database not ready');
+    if (!db || !isReady) throw new Error('Database not ready');
 
-    const entry = await db.getFirstAsync<{ photos: string | null }>(
-      'SELECT photos FROM work_entries WHERE id = ?', [entryId]
-    );
-    if (entry?.photos) {
-      try {
-        const photos: string[] = JSON.parse(entry.photos);
-        if (Array.isArray(photos) && photos.length > 0) {
-          console.log('[ObjectsProvider] deleteWorkEntry', entryId, '- deleting photos:', photos.length);
-          await deleteFilesFromUnifiedDir(photos);
-        }
-      } catch {}
+    try {
+      const entry = await db.getFirstAsync<{ photos: string | null }>(
+        'SELECT photos FROM work_entries WHERE id = ?', [entryId]
+      );
+      if (entry?.photos) {
+        try {
+          const photos: string[] = JSON.parse(entry.photos);
+          if (Array.isArray(photos) && photos.length > 0) {
+            console.log('[ObjectsProvider] deleteWorkEntry', entryId, '- deleting photos:', photos.length);
+            await deleteFilesFromUnifiedDir(photos);
+          }
+        } catch {}
+      }
+
+      await db.runAsync('DELETE FROM work_entries WHERE id = ?', [entryId]);
+      await loadWorkEntries();
+    } catch (e: any) {
+      console.error('[ObjectsProvider] deleteWorkEntry failed:', e?.message);
+      throw e;
     }
-
-    await db.runAsync('DELETE FROM work_entries WHERE id = ?', [entryId]);
-    await loadWorkEntries();
-  }, [db, loadWorkEntries]);
+  }, [db, isReady, loadWorkEntries]);
 
   const getWorkEntry = useCallback((entryId: string): WorkEntry | undefined => {
     for (const entries of Object.values(workEntries)) {
