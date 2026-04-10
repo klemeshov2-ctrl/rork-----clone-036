@@ -545,7 +545,13 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
   }, [userId, userEmail, displayName, isSubscriberProfile, subscriptions, activeProfileId, loadMessages, backupMasterId, firestoreUid]);
 
   const deleteChat = useCallback(async (masterId: string, subscriberId: string) => {
-    console.log('[Chat][DEBUG] deleteChat called:', { masterId, subscriberId, userId });
+    const currentAuthUser = auth.currentUser;
+    console.log('[Chat][DEBUG] deleteChat called:', { masterId, subscriberId, userId, authUid: currentAuthUser?.uid ?? null });
+    if (!currentAuthUser) {
+      console.log('[Chat] deleteChat: user not authenticated, aborting');
+      Alert.alert('Ошибка', 'Необходимо авторизоваться для удаления чата');
+      return;
+    }
     setIsDeleting(true);
     try {
       const chatDocId = getChatDocId(masterId, subscriberId);
@@ -571,7 +577,7 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
     } finally {
       setIsDeleting(false);
     }
-  }, []);
+  }, [userId]);
 
   const markChatAsRead = useCallback((masterId: string, subscriberId: string) => {
     if (!userId) return;
