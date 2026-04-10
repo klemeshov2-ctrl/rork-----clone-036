@@ -3,7 +3,6 @@ import { Platform } from 'react-native';
 import { firestore } from '@/config/firebase';
 import { doc, setDoc, getDoc, getDocs, collection, query, where, serverTimestamp } from 'firebase/firestore';
 import Constants from 'expo-constants';
-import * as Device from 'expo-device';
 
 const EXPO_PUSH_API = 'https://exp.host/--/api/v2/push/send';
 
@@ -42,8 +41,6 @@ export async function registerPushToken(userId: string): Promise<string | null> 
       'zhurnal-mastera';
 
     console.log('[Push] Using projectId:', projectId);
-    console.log('[Push] Device:', Device.modelName, Device.osName, Device.osVersion);
-
     const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
     const token = tokenData.data;
     console.log('[Push] Got Expo push token:', token);
