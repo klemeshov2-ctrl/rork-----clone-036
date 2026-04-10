@@ -9,6 +9,9 @@ import {
   ActivityIndicator,
   Animated,
   Keyboard,
+  KeyboardAvoidingView,
+  Platform,
+  TouchableWithoutFeedback,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
@@ -96,6 +99,12 @@ export default function AccessCodeScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <Stack.Screen options={{ title: 'Код доступа', headerBackTitle: 'Назад' }} />
+      <KeyboardAvoidingView
+        style={styles.keyboardAvoid}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
       <View style={styles.content}>
         <View style={styles.iconCircle}>
           <KeyRound size={40} color={colors.primary} />
@@ -135,6 +144,8 @@ export default function AccessCodeScreen() {
           )}
         </TouchableOpacity>
       </View>
+        </TouchableWithoutFeedback>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -144,6 +155,9 @@ function createStyles(colors: ThemeColors) {
     container: {
       flex: 1,
       backgroundColor: colors.background,
+    },
+    keyboardAvoid: {
+      flex: 1,
     },
     content: {
       flex: 1,
