@@ -408,10 +408,6 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
       console.log('[Backup] No effectiveMasterId yet, skipping subscribers listener');
       return;
     }
-    if (!isMasterEnabled && !masterId) {
-      console.log('[Backup] Master mode not enabled and no stored masterId, skipping subscribers listener');
-      return;
-    }
 
     console.log('[Backup] Setting up Firestore subscribers listener for masterId:', effectiveMasterId, '(masterId:', masterId, ', firebaseUid:', firebaseUid, ', isMasterEnabled:', isMasterEnabled, ')');
     setIsLoadingSubscribers(true);

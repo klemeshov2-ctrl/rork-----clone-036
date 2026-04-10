@@ -72,7 +72,10 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
 
 
   useEffect(() => {
-    console.log('[Chat][DEBUG] commentsUserId changed:', commentsUserId, '| prev userId:', userId);
+    console.log('[Chat][DEBUG] commentsUserId changed:', commentsUserId, '| prev userId:', userId, '| firestoreUid:', firestoreUid, '| backupMasterId:', backupMasterId);
+    if (commentsUserId && firestoreUid && commentsUserId !== firestoreUid) {
+      console.log('[Chat][WARN] commentsUserId and firestoreUid mismatch! commentsUserId:', commentsUserId, 'firestoreUid:', firestoreUid);
+    }
     setUserId(commentsUserId);
   }, [commentsUserId]);
 
@@ -447,7 +450,7 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
     const resolvedName = displayName || userEmail || 'Аноним';
     const isMaster = !isSubscriberProfile;
 
-    console.log('[Chat] Sending message:', { masterId, subscriberId, senderId: userId, senderName: resolvedName });
+    console.log('[Chat] Sending message:', { masterId, subscriberId, senderId: userId, senderName: resolvedName, firestoreUid, backupMasterId, isSubscriberProfile, activeProfileId });
 
     try {
       try {
