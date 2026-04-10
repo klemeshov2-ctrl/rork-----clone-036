@@ -599,6 +599,7 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
 
     const iAmMaster = !isSubscriberProfile && (masterId === userId || relevantMasterIds.includes(masterId));
     const resetField = iAmMaster ? 'unreadForMaster' : 'unreadForSubscriber';
+    console.log('[Chat] markChatAsRead:', { chatDocId, iAmMaster, resetField, userId, isSubscriberProfile });
     updateDoc(chatRef, { [resetField]: 0 }).catch((err) => {
       console.log('[Chat] markChatAsRead error:', err?.message);
     });
@@ -620,7 +621,7 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
     }).catch((err) => {
       console.log('[Chat] markChatAsRead batch error:', err?.message);
     });
-  }, [userId]);
+  }, [userId, isSubscriberProfile, relevantMasterIds]);
 
   useEffect(() => {
     return () => {
