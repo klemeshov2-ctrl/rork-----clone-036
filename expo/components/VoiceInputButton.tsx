@@ -10,7 +10,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Mic, Square } from 'lucide-react-native';
-import { Audio } from 'expo-av';
+import { useAudioRecorder, RecordingPresets, AudioModule, setAudioModeAsync } from 'expo-audio';
 import { useThemeColors } from '@/providers/ThemeProvider';
 
 const STT_URL = 'https://toolkit.rork.com/stt/transcribe/';
@@ -25,7 +25,7 @@ export function VoiceInputButton({ onResult, size = 44, style }: VoiceInputButto
   const colors = useThemeColors();
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const recordingRef = useRef<Audio.Recording | null>(null);
+  const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const pulseLoop = useRef<Animated.CompositeAnimation | null>(null);
   const webStreamRef = useRef<MediaStream | null>(null);
@@ -34,10 +34,6 @@ export function VoiceInputButton({ onResult, size = 44, style }: VoiceInputButto
 
   useEffect(() => {
     return () => {
-      if (recordingRef.current) {
-        recordingRef.current.stopAndUnloadAsync().catch(() => {});
-        recordingRef.current = null;
-      }
       if (webStreamRef.current) {
         webStreamRef.current.getTracks().forEach(track => track.stop());
         webStreamRef.current = null;
@@ -96,46 +92,19 @@ export function VoiceInputButton({ onResult, size = 44, style }: VoiceInputButto
 
   const startRecordingNative = useCallback(async () => {
     try {
-      const permission = await Audio.requestPermissionsAsync();
-      if (!permission.granted) {
+      const status = await AudioModule.requestRecordingPermissionsAsync();
+      if (!status.granted) {
         Alert.alert('Нет доступа', 'Разрешите доступ к микрофону в настройках устройства');
         return false;
       }
 
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
+      await setAudioModeAsync({
+        allowsRecording: true,
+        playsInSilentMode: true,
       });
 
-      const recording = new Audio.Recording();
-      await recording.prepareToRecordAsync({
-        android: {
-          extension: '.m4a',
-          outputFormat: 2,
-          audioEncoder: 3,
-          sampleRate: 44100,
-          numberOfChannels: 1,
-          bitRate: 128000,
-        },
-        ios: {
-          extension: '.wav',
-          outputFormat: 1,
-          audioQuality: 127,
-          sampleRate: 44100,
-          numberOfChannels: 1,
-          bitRate: 128000,
-          linearPCMBitDepth: 16,
-          linearPCMIsBigEndian: false,
-          linearPCMIsFloat: false,
-        },
-        web: {
-          mimeType: 'audio/webm',
-          bitsPerSecond: 128000,
-        },
-      });
-
-      await recording.startAsync();
-      recordingRef.current = recording;
+      await audioRecorder.prepareToRecordAsync();
+      audioRecorder.record();
       console.log('[VoiceInput] Native recording started');
       return true;
     } catch (error) {
@@ -143,18 +112,14 @@ export function VoiceInputButton({ onResult, size = 44, style }: VoiceInputButto
       Alert.alert('Ошибка', 'Не удалось начать запись');
       return false;
     }
-  }, []);
+  }, [audioRecorder]);
 
   const stopRecordingNative = useCallback(async (): Promise<FormData | null> => {
-    const recording = recordingRef.current;
-    if (!recording) return null;
-
     try {
-      await recording.stopAndUnloadAsync();
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+      await audioRecorder.stop();
+      await setAudioModeAsync({ allowsRecording: false });
 
-      const uri = recording.getURI();
-      recordingRef.current = null;
+      const uri = audioRecorder.uri;
 
       if (!uri) {
         console.error('[VoiceInput] No recording URI');
@@ -178,10 +143,9 @@ export function VoiceInputButton({ onResult, size = 44, style }: VoiceInputButto
       return formData;
     } catch (error) {
       console.error('[VoiceInput] Failed to stop native recording:', error);
-      recordingRef.current = null;
       return null;
     }
-  }, []);
+  }, [audioRecorder]);
 
   const startRecordingWeb = useCallback(async () => {
     try {
