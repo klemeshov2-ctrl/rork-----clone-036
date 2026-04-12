@@ -98,7 +98,7 @@ export default function NewEntryScreen() {
   const pickFromGallery = async () => {
     if (photos.length >= 5) { Alert.alert('Ошибка', 'Максимум 5 фото'); return; }
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       allowsMultipleSelection: true,
       selectionLimit: 5 - photos.length,
     });

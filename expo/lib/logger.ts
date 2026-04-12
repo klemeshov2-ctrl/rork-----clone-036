@@ -122,6 +122,10 @@ const LOG_IGNORED_PATTERNS: RegExp[] = [
   /EventEmitter\.removeListener/i,
   /\[DEBUG\]/,
   /expo-av.*deprecated/i,
+  /expo-image-picker.*deprecated/i,
+  /\[compressImage\]/i,
+  /WebChannelConnection.*transport errored/i,
+  /Firestore.*WebChannelConnection/i,
 
   /\[Backup\](?!.*(?:error|fail|critical|ошибка))/i,
   /\[YandexDisk\](?!.*(?:error|fail|critical|ошибка))/i,
