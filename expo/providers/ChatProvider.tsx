@@ -562,7 +562,7 @@ export const [ChatProvider, useChat] = createContextHook<ChatContextType>(() => 
     } finally {
       setIsSending(false);
     }
-  }, [userId, userEmail, displayName, isSubscriberProfile, subscriptions, activeProfileId, loadMessages, backupMasterId, firestoreUid]);
+  }, [userId, userEmail, displayName, isSubscriberProfile, subscriptions, activeProfileId, loadMessages, backupMasterId, firestoreUid, isAccessGranted]);
 
   const deleteChat = useCallback(async (masterId: string, subscriberId: string) => {
     const currentAuthUser = auth.currentUser;

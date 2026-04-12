@@ -521,7 +521,7 @@ export const [CommentsProvider, useComments] = createContextHook<CommentsContext
     } finally {
       setIsSending(false);
     }
-  }, [userId, userEmail, displayName, activeMasterId, backupMasterId, isSubscriberProfile, subscriptions, activeProfileId, subscriberEmails, firestoreSubscribers]);
+  }, [userId, userEmail, displayName, activeMasterId, backupMasterId, isSubscriberProfile, subscriptions, activeProfileId, subscriberEmails, firestoreSubscribers, isAccessGranted]);
 
   const canWriteComments = useMemo(() => {
     let result: boolean;
