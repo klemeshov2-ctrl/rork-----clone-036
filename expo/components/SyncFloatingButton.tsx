@@ -69,7 +69,7 @@ export function SyncFloatingButton() {
       >
         {syncProgress ? (
           <ArrowUpDown size={18} color={colors.info} />
-        ) : isConnected ? (
+        ) : (isConnected || isSubscriberProfile) ? (
           <Cloud size={18} color={isBusy ? colors.warning : colors.primary} />
         ) : (
           <CloudOff size={18} color={colors.textMuted} />
