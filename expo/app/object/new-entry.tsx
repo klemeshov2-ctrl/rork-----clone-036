@@ -247,7 +247,12 @@ export default function NewEntryScreen() {
                 <ChevronDown size={16} color={colors.textMuted} />
               </TouchableOpacity>
               {showSystemPicker && (
-                <View style={styles.systemDropdown}>
+                <ScrollView
+                  style={styles.systemDropdown}
+                  nestedScrollEnabled
+                  keyboardShouldPersistTaps="handled"
+                  showsVerticalScrollIndicator
+                >
                   <TouchableOpacity 
                     style={[styles.systemOption, !selectedSystem && styles.systemOptionActive]} 
                     onPress={() => { setSelectedSystem(''); setShowSystemPicker(false); }}
@@ -263,7 +268,7 @@ export default function NewEntryScreen() {
                       <Text style={[styles.systemOptionText, selectedSystem === sys && { color: colors.primary }]}>{sys}</Text>
                     </TouchableOpacity>
                   ))}
-                </View>
+                </ScrollView>
               )}
             </View>
           )}
@@ -346,17 +351,24 @@ export default function NewEntryScreen() {
               {filteredMaterials.length === 0 && !showCreateMaterial ? (
                 <Text style={styles.noMaterials}>Нет доступных материалов</Text>
               ) : (
-                filteredMaterials.slice(0, 10).map(item => (
-                  <TouchableOpacity
-                    key={item.id}
-                    style={styles.materialPickerItem}
-                    onPress={() => addMaterial(item.id)}
-                  >
-                    <Package size={16} color={colors.secondary} />
-                    <Text style={styles.materialPickerName}>{item.name}</Text>
-                    <Text style={styles.materialPickerQty}>{item.quantity} {item.unit}</Text>
-                  </TouchableOpacity>
-                ))
+                <ScrollView
+                  style={styles.materialPickerScroll}
+                  nestedScrollEnabled
+                  keyboardShouldPersistTaps="handled"
+                  showsVerticalScrollIndicator
+                >
+                  {filteredMaterials.map(item => (
+                    <TouchableOpacity
+                      key={item.id}
+                      style={styles.materialPickerItem}
+                      onPress={() => addMaterial(item.id)}
+                    >
+                      <Package size={16} color={colors.secondary} />
+                      <Text style={styles.materialPickerName}>{item.name}</Text>
+                      <Text style={styles.materialPickerQty}>{item.quantity} {item.unit}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
               )}
               {showCreateMaterial && (
                 <TouchableOpacity style={styles.createMaterialBtn} onPress={handleCreateNewMaterial}>
@@ -411,7 +423,8 @@ function createStyles(colors: ThemeColors) { return StyleSheet.create({
   systemSection: { marginBottom: 8 },
   systemPicker: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.surfaceElevated, borderRadius: 10, padding: 14, borderWidth: 1, borderColor: colors.border },
   systemPickerText: { flex: 1, fontSize: 14, color: colors.textMuted },
-  systemDropdown: { backgroundColor: colors.surfaceElevated, borderRadius: 10, marginTop: 4, borderWidth: 1, borderColor: colors.border, overflow: 'hidden' as const },
+  systemDropdown: { backgroundColor: colors.surfaceElevated, borderRadius: 10, marginTop: 4, borderWidth: 1, borderColor: colors.border, maxHeight: 240 },
+  materialPickerScroll: { maxHeight: 280 },
   systemOption: { paddingVertical: 12, paddingHorizontal: 14, borderBottomWidth: 1, borderBottomColor: colors.border },
   systemOptionActive: { backgroundColor: colors.primary + '15' },
   systemOptionText: { fontSize: 14, color: colors.text },
