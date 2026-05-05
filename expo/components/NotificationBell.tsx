@@ -1,13 +1,18 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Bell, Cloud, CloudOff, ArrowUpDown } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useThemeColors } from '@/providers/ThemeProvider';
 import { useComments } from '@/providers/CommentsProvider';
 import { useChat } from '@/providers/ChatProvider';
 import { useSyncPanel } from '@/providers/SyncPanelProvider';
 import { useBackup } from '@/providers/BackupProvider';
 import { useProfile } from '@/providers/ProfileProvider';
+import { useObjects } from '@/providers/ObjectsProvider';
+import { useInventory } from '@/providers/InventoryProvider';
+import { useKnowledge } from '@/providers/KnowledgeProvider';
+import { useTasks } from '@/providers/TasksProvider';
 
 export function SyncHeaderButton({ size = 40 }: { size?: number }) {
   const colors = useThemeColors();
@@ -61,9 +66,46 @@ export function NotificationBell({ size = 40 }: { size?: number }) {
   const colors = useThemeColors();
   const { unreadCount: commentUnread } = useComments();
   const { unreadMessagesCount: chatUnread } = useChat();
+  const { isSubscriberProfile, activeProfileId } = useProfile();
+  const { objects, workEntries, documents } = useObjects();
+  const { items: inventoryItems } = useInventory();
+  const { items: knowledgeItems } = useKnowledge();
+  const { tasks } = useTasks();
   const router = useRouter();
 
-  const totalUnread = commentUnread + chatUnread;
+  const updatesSeenKey = useMemo(() => `@updates_seen_${activeProfileId}`, [activeProfileId]);
+  const [lastSeen, setLastSeen] = useState<number>(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const v = await AsyncStorage.getItem(updatesSeenKey);
+        if (!cancelled) setLastSeen(v ? parseInt(v, 10) || 0 : 0);
+      } catch {}
+    })();
+    const interval = setInterval(async () => {
+      try {
+        const v = await AsyncStorage.getItem(updatesSeenKey);
+        if (!cancelled) setLastSeen(v ? parseInt(v, 10) || 0 : 0);
+      } catch {}
+    }, 3000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [updatesSeenKey]);
+
+  const updatesUnread = useMemo<number>(() => {
+    if (!isSubscriberProfile) return 0;
+    let count = 0;
+    objects.forEach(o => { const ts = o.updatedAt || o.createdAt; if (ts > lastSeen) count++; });
+    Object.values(workEntries).forEach(arr => { arr.forEach(e => { if (e.createdAt > lastSeen) count++; }); });
+    Object.values(documents).forEach(arr => { arr.forEach(d => { if (d.uploadedAt > lastSeen) count++; }); });
+    inventoryItems.forEach(i => { const ts = i.updatedAt || i.createdAt; if (ts > lastSeen) count++; });
+    knowledgeItems.forEach(k => { if (k.createdAt > lastSeen) count++; });
+    tasks.forEach(t => { if (t.createdAt > lastSeen) count++; });
+    return count;
+  }, [isSubscriberProfile, objects, workEntries, documents, inventoryItems, knowledgeItems, tasks, lastSeen]);
+
+  const totalUnread = commentUnread + chatUnread + updatesUnread;
 
   return (
     <View style={styles.row}>
