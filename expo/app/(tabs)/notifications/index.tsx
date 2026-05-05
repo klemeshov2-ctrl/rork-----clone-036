@@ -616,7 +616,9 @@ export default function NotificationsScreen() {
   const { tasks } = useTasks();
 
   const updatesSeenKey = useMemo(() => `@updates_seen_${activeProfileId}`, [activeProfileId]);
+  const updatesDismissedKey = useMemo(() => `@updates_dismissed_${activeProfileId}`, [activeProfileId]);
   const [lastSeen, setLastSeen] = useState<number>(0);
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
   const [hasLoadedSeen, setHasLoadedSeen] = useState<boolean>(false);
 
   useEffect(() => {
@@ -626,14 +628,19 @@ export default function NotificationsScreen() {
         const v = await AsyncStorage.getItem(updatesSeenKey);
         if (!cancelled) {
           setLastSeen(v ? parseInt(v, 10) || 0 : 0);
-          setHasLoadedSeen(true);
         }
-      } catch {
-        if (!cancelled) setHasLoadedSeen(true);
-      }
+      } catch {}
+      try {
+        const d = await AsyncStorage.getItem(updatesDismissedKey);
+        if (!cancelled) {
+          const arr: string[] = d ? JSON.parse(d) : [];
+          setDismissedIds(new Set(arr));
+        }
+      } catch {}
+      if (!cancelled) setHasLoadedSeen(true);
     })();
     return () => { cancelled = true; };
-  }, [updatesSeenKey]);
+  }, [updatesSeenKey, updatesDismissedKey]);
 
   type UpdateRow = {
     id: string;
@@ -692,18 +699,31 @@ export default function NotificationsScreen() {
       if (t.createdAt > lastSeen) rows.push({ id: 'tk_' + t.id, type: 'task', title: t.title, subtitle: t.objectName, timestamp: t.createdAt, entityId: t.id });
     });
     rows.sort((a, b) => b.timestamp - a.timestamp);
-    return rows;
-  }, [objects, workEntries, documents, inventoryItems, knowledgeItems, tasks, lastSeen]);
+    return rows.filter(r => !dismissedIds.has(r.id));
+  }, [objects, workEntries, documents, inventoryItems, knowledgeItems, tasks, lastSeen, dismissedIds]);
 
   const updatesCount = updateRows.length;
 
   const markUpdatesSeen = useCallback(async () => {
     const now = Date.now();
     setLastSeen(now);
+    setDismissedIds(new Set());
     try { await AsyncStorage.setItem(updatesSeenKey, String(now)); } catch {}
-  }, [updatesSeenKey]);
+    try { await AsyncStorage.removeItem(updatesDismissedKey); } catch {}
+  }, [updatesSeenKey, updatesDismissedKey]);
+
+  const dismissUpdate = useCallback(async (id: string) => {
+    setDismissedIds(prev => {
+      if (prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.add(id);
+      AsyncStorage.setItem(updatesDismissedKey, JSON.stringify(Array.from(next))).catch(() => {});
+      return next;
+    });
+  }, [updatesDismissedKey]);
 
   const navigateToUpdate = useCallback((row: UpdateRow) => {
+    dismissUpdate(row.id);
     switch (row.type) {
       case 'object':
       case 'work_entry':
@@ -726,7 +746,7 @@ export default function NotificationsScreen() {
         }
         break;
     }
-  }, [router]);
+  }, [router, dismissUpdate]);
 
   const currentUserId = chatUserId;
 

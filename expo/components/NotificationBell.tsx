@@ -47,7 +47,7 @@ export function SyncHeaderButton({ size = 40 }: { size?: number }) {
     >
       {syncProgress ? (
         <ArrowUpDown size={size * 0.5} color={colors.info} />
-      ) : isConnected ? (
+      ) : (isConnected || isSubscriberProfile) ? (
         <Cloud size={size * 0.5} color={isBusy ? colors.warning : colors.primary} />
       ) : (
         <CloudOff size={size * 0.5} color={colors.textMuted} />
@@ -74,36 +74,53 @@ export function NotificationBell({ size = 40 }: { size?: number }) {
   const router = useRouter();
 
   const updatesSeenKey = useMemo(() => `@updates_seen_${activeProfileId}`, [activeProfileId]);
+  const updatesDismissedKey = useMemo(() => `@updates_dismissed_${activeProfileId}`, [activeProfileId]);
   const [lastSeen, setLastSeen] = useState<number>(0);
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    const load = async () => {
       try {
         const v = await AsyncStorage.getItem(updatesSeenKey);
         if (!cancelled) setLastSeen(v ? parseInt(v, 10) || 0 : 0);
       } catch {}
-    })();
-    const interval = setInterval(async () => {
       try {
-        const v = await AsyncStorage.getItem(updatesSeenKey);
-        if (!cancelled) setLastSeen(v ? parseInt(v, 10) || 0 : 0);
+        const d = await AsyncStorage.getItem(updatesDismissedKey);
+        if (!cancelled) {
+          const arr: string[] = d ? JSON.parse(d) : [];
+          setDismissedIds(new Set(arr));
+        }
       } catch {}
-    }, 3000);
+    };
+    load();
+    const interval = setInterval(load, 2000);
     return () => { cancelled = true; clearInterval(interval); };
-  }, [updatesSeenKey]);
+  }, [updatesSeenKey, updatesDismissedKey]);
 
   const updatesUnread = useMemo<number>(() => {
     if (!isSubscriberProfile) return 0;
     let count = 0;
-    objects.forEach(o => { const ts = o.updatedAt || o.createdAt; if (ts > lastSeen) count++; });
-    Object.values(workEntries).forEach(arr => { arr.forEach(e => { if (e.createdAt > lastSeen) count++; }); });
-    Object.values(documents).forEach(arr => { arr.forEach(d => { if (d.uploadedAt > lastSeen) count++; }); });
-    inventoryItems.forEach(i => { const ts = i.updatedAt || i.createdAt; if (ts > lastSeen) count++; });
-    knowledgeItems.forEach(k => { if (k.createdAt > lastSeen) count++; });
-    tasks.forEach(t => { if (t.createdAt > lastSeen) count++; });
+    const consider = (id: string, ts: number) => {
+      if (ts > lastSeen && !dismissedIds.has(id)) count++;
+    };
+    objects.forEach(o => consider('obj_' + o.id, o.updatedAt || o.createdAt));
+    Object.values(workEntries).forEach(arr => {
+      arr.forEach(e => {
+        consider('we_' + e.id, e.createdAt);
+        (e.photos || []).forEach((_p, idx) => consider('wep_' + e.id + '_' + idx, e.createdAt));
+        if (e.attachedPdfId) consider('wepdf_' + e.id, e.createdAt);
+      });
+    });
+    Object.values(documents).forEach(arr => { arr.forEach(d => consider('doc_' + d.id, d.uploadedAt)); });
+    inventoryItems.forEach(i => consider('inv_' + i.id, i.updatedAt || i.createdAt));
+    knowledgeItems.forEach(k => {
+      consider('kn_' + k.id, k.createdAt);
+      if (k.filePath || k.fileUrl) consider('knf_' + k.id, k.createdAt);
+    });
+    tasks.forEach(t => consider('tk_' + t.id, t.createdAt));
     return count;
-  }, [isSubscriberProfile, objects, workEntries, documents, inventoryItems, knowledgeItems, tasks, lastSeen]);
+  }, [isSubscriberProfile, objects, workEntries, documents, inventoryItems, knowledgeItems, tasks, lastSeen, dismissedIds]);
 
   const totalUnread = commentUnread + chatUnread + updatesUnread;
 
