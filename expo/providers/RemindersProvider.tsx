@@ -3,6 +3,7 @@ import createContextHook from '@nkzw/create-context-hook';
 import { Reminder } from '@/types';
 import { useDatabase } from './DatabaseProvider';
 import { generateId } from '@/lib/utils';
+import { assertNotSubscriber } from './ProfileProvider';
 
 interface RemindersContextType {
   reminders: Reminder[];
@@ -50,6 +51,7 @@ export const [RemindersProvider, useReminders] = createContextHook<RemindersCont
   }, [isReady, refreshData]);
 
   const addReminder = async (reminder: Omit<Reminder, 'id' | 'createdAt' | 'isCompleted'>) => {
+    if (assertNotSubscriber()) return;
     if (!db) throw new Error('Database not ready');
     const id = generateId();
     await db.runAsync(
@@ -60,6 +62,7 @@ export const [RemindersProvider, useReminders] = createContextHook<RemindersCont
   };
 
   const updateReminder = async (id: string, updates: Partial<Reminder>) => {
+    if (assertNotSubscriber()) return;
     if (!db) throw new Error('Database not ready');
     const sets: string[] = [];
     const values: any[] = [];
@@ -78,6 +81,7 @@ export const [RemindersProvider, useReminders] = createContextHook<RemindersCont
   };
 
   const deleteReminder = async (id: string) => {
+    if (assertNotSubscriber()) return;
     if (!db) throw new Error('Database not ready');
     await db.runAsync('DELETE FROM reminders WHERE id = ?', [id]);
     await loadReminders();

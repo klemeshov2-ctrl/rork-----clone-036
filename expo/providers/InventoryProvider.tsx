@@ -3,6 +3,7 @@ import createContextHook from '@nkzw/create-context-hook';
 import { InventoryItem, InventoryCategory } from '@/types';
 import { useDatabase } from './DatabaseProvider';
 import { generateId } from '@/lib/utils';
+import { assertNotSubscriber } from './ProfileProvider';
 
 interface InventoryContextType {
   items: InventoryItem[];
@@ -61,6 +62,7 @@ export const [InventoryProvider, useInventory] = createContextHook<InventoryCont
   }, [isReady, refreshData]);
 
   const addCategory = useCallback(async (name: string): Promise<InventoryCategory> => {
+    if (assertNotSubscriber()) throw new Error('subscriber-readonly');
     if (!db) throw new Error('Database not ready');
     const id = generateId();
     await db.runAsync('INSERT INTO inventory_categories (id, name) VALUES (?, ?)', [id, name]);
@@ -69,12 +71,14 @@ export const [InventoryProvider, useInventory] = createContextHook<InventoryCont
   }, [db, loadCategories]);
 
   const updateCategory = useCallback(async (id: string, name: string) => {
+    if (assertNotSubscriber()) return;
     if (!db) throw new Error('Database not ready');
     await db.runAsync('UPDATE inventory_categories SET name = ? WHERE id = ?', [name, id]);
     await loadCategories();
   }, [db, loadCategories]);
 
   const deleteCategory = useCallback(async (id: string) => {
+    if (assertNotSubscriber()) return;
     if (!db) throw new Error('Database not ready');
     await db.runAsync('UPDATE inventory SET category_id = NULL WHERE category_id = ?', [id]);
     await db.runAsync('DELETE FROM inventory_categories WHERE id = ?', [id]);
@@ -82,6 +86,7 @@ export const [InventoryProvider, useInventory] = createContextHook<InventoryCont
   }, [db, loadCategories, loadItems]);
 
   const addItem = useCallback(async (item: Omit<InventoryItem, 'id' | 'createdAt' | 'updatedAt'>): Promise<InventoryItem> => {
+    if (assertNotSubscriber()) throw new Error('subscriber-readonly');
     if (!db) throw new Error('Database not ready');
     const id = generateId();
     const now = Date.now();
@@ -94,6 +99,7 @@ export const [InventoryProvider, useInventory] = createContextHook<InventoryCont
   }, [db, loadItems]);
 
   const updateItem = useCallback(async (id: string, updates: Partial<InventoryItem>) => {
+    if (assertNotSubscriber()) return;
     if (!db) throw new Error('Database not ready');
     const sets: string[] = [];
     const values: any[] = [];
@@ -109,12 +115,14 @@ export const [InventoryProvider, useInventory] = createContextHook<InventoryCont
   }, [db, loadItems]);
 
   const deleteItem = useCallback(async (id: string) => {
+    if (assertNotSubscriber()) return;
     if (!db) throw new Error('Database not ready');
     await db.runAsync('DELETE FROM inventory WHERE id = ?', [id]);
     await loadItems();
   }, [db, loadItems]);
 
   const consumeItem = useCallback(async (id: string, quantity: number): Promise<boolean> => {
+    if (assertNotSubscriber()) return false;
     if (!db) throw new Error('Database not ready');
     const item = items.find(i => i.id === id);
     if (!item || item.quantity < quantity) return false;

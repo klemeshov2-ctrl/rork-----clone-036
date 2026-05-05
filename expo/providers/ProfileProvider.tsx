@@ -4,6 +4,30 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import createContextHook from '@nkzw/create-context-hook';
 import type { MasterSubscription, AppProfile, ProfileMode } from '@/types';
 
+let _isSubscriberFlag = false;
+let _lastAlertAt = 0;
+
+/**
+ * Returns true if the current profile is a subscriber view and shows a read-only alert.
+ * Use as an early guard inside provider mutations: `if (assertNotSubscriber()) return;`
+ */
+export function assertNotSubscriber(): boolean {
+  if (!_isSubscriberFlag) return false;
+  const now = Date.now();
+  if (now - _lastAlertAt > 600) {
+    _lastAlertAt = now;
+    Alert.alert(
+      'Только просмотр',
+      'Подписчик не может редактировать и менять данные. Доступны только комментарии и чат с мастером.'
+    );
+  }
+  return true;
+}
+
+export function isSubscriberView(): boolean {
+  return _isSubscriberFlag;
+}
+
 const PROFILE_MODE_KEY = '@profile_mode';
 const ACTIVE_PROFILE_KEY = '@active_profile_id';
 const SUBSCRIPTIONS_KEY = '@sync_subscriptions';
@@ -64,6 +88,10 @@ export const [ProfileProvider, useProfile] = createContextHook<ProfileContextTyp
 
   const isSubscriberProfile = activeProfileId !== 'master';
 
+  useEffect(() => {
+    _isSubscriberFlag = isSubscriberProfile;
+  }, [isSubscriberProfile]);
+
   const setMode = useCallback(async (newMode: ProfileMode) => {
     setModeState(newMode);
     await AsyncStorage.setItem(PROFILE_MODE_KEY, newMode);
@@ -121,15 +149,21 @@ export function useSubscriberGuard() {
     if (!isSubscriberProfile) return Promise.resolve(true);
     return new Promise(resolve => {
       Alert.alert(
-        'Внимание',
-        'Вы редактируете данные подписки. При следующем обновлении от мастера ваши изменения будут заменены. Продолжить?',
-        [
-          { text: 'Отмена', style: 'cancel', onPress: () => resolve(false) },
-          { text: 'Всё равно изменить', onPress: () => resolve(true) },
-        ]
+        'Только просмотр',
+        'В режиме подписчика нельзя редактировать или менять данные. Доступны только комментарии и чат с мастером.',
+        [{ text: 'Понятно', onPress: () => resolve(false) }]
       );
     });
   }, [isSubscriberProfile]);
 
-  return { isSubscriberProfile, guardEdit };
+  const blockIfSubscriber = useCallback((): boolean => {
+    if (!isSubscriberProfile) return false;
+    Alert.alert(
+      'Только просмотр',
+      'В режиме подписчика нельзя редактировать или менять данные. Доступны только комментарии и чат с мастером.'
+    );
+    return true;
+  }, [isSubscriberProfile]);
+
+  return { isSubscriberProfile, guardEdit, blockIfSubscriber };
 }

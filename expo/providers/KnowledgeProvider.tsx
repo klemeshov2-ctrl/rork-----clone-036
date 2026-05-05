@@ -4,6 +4,7 @@ import { KnowledgeItem, KnowledgeCategory } from '@/types';
 import { useDatabase } from './DatabaseProvider';
 import { generateId } from '@/lib/utils';
 import { deleteFilesFromUnifiedDir } from '@/lib/fileManager';
+import { assertNotSubscriber } from './ProfileProvider';
 
 interface KnowledgeContextType {
   items: KnowledgeItem[];
@@ -64,6 +65,7 @@ export const [KnowledgeProvider, useKnowledge] = createContextHook<KnowledgeCont
   }, [isReady, refreshData]);
 
   const addCategory = useCallback(async (name: string): Promise<KnowledgeCategory> => {
+    if (assertNotSubscriber()) throw new Error('subscriber-readonly');
     if (!db) throw new Error('Database not ready');
     const id = generateId();
     const now = Date.now();
@@ -76,12 +78,14 @@ export const [KnowledgeProvider, useKnowledge] = createContextHook<KnowledgeCont
   }, [db, loadCategories]);
 
   const updateCategory = useCallback(async (id: string, name: string) => {
+    if (assertNotSubscriber()) return;
     if (!db) throw new Error('Database not ready');
     await db.runAsync('UPDATE knowledge_categories SET name = ? WHERE id = ?', [name, id]);
     await loadCategories();
   }, [db, loadCategories]);
 
   const deleteCategory = useCallback(async (id: string) => {
+    if (assertNotSubscriber()) return;
     if (!db) throw new Error('Database not ready');
     await db.runAsync('UPDATE knowledge_items SET category_id = NULL WHERE category_id = ?', [id]);
     await db.runAsync('DELETE FROM knowledge_categories WHERE id = ?', [id]);
@@ -89,6 +93,7 @@ export const [KnowledgeProvider, useKnowledge] = createContextHook<KnowledgeCont
   }, [db, loadCategories, loadItems]);
 
   const moveItemToCategory = useCallback(async (itemId: string, categoryId: string | null) => {
+    if (assertNotSubscriber()) return;
     if (!db) throw new Error('Database not ready');
     await db.runAsync(
       'UPDATE knowledge_items SET category_id = ? WHERE id = ?',
@@ -98,6 +103,7 @@ export const [KnowledgeProvider, useKnowledge] = createContextHook<KnowledgeCont
   }, [db, loadItems]);
 
   const addItem = useCallback(async (item: Omit<KnowledgeItem, 'id' | 'createdAt'>) => {
+    if (assertNotSubscriber()) return;
     if (!db) throw new Error('Database not ready');
     const id = generateId();
     await db.runAsync(
@@ -108,6 +114,7 @@ export const [KnowledgeProvider, useKnowledge] = createContextHook<KnowledgeCont
   }, [db, loadItems]);
 
   const updateItem = useCallback(async (id: string, updates: Partial<KnowledgeItem>) => {
+    if (assertNotSubscriber()) return;
     if (!db) throw new Error('Database not ready');
     const sets: string[] = [];
     const values: any[] = [];
@@ -122,6 +129,7 @@ export const [KnowledgeProvider, useKnowledge] = createContextHook<KnowledgeCont
   }, [db, loadItems]);
 
   const deleteItem = useCallback(async (id: string) => {
+    if (assertNotSubscriber()) return;
     if (!db) throw new Error('Database not ready');
 
     const item = await db.getFirstAsync<{ file_path: string | null }>(

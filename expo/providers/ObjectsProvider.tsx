@@ -4,6 +4,7 @@ import { ObjectItem, ContactPerson, ObjectDocument, WorkEntry, ObjectGroup } fro
 import { useDatabase } from './DatabaseProvider';
 import { generateId } from '@/lib/utils';
 import { deleteFilesFromUnifiedDir } from '@/lib/fileManager';
+import { assertNotSubscriber } from './ProfileProvider';
 
 interface ObjectsContextType {
   objects: ObjectItem[];
@@ -184,6 +185,7 @@ export const [ObjectsProvider, useObjects] = createContextHook<ObjectsContextTyp
   }, [isReady, refreshData]);
 
   const addGroup = useCallback(async (name: string): Promise<ObjectGroup> => {
+    if (assertNotSubscriber()) throw new Error('subscriber-readonly');
     if (!db || !isReady) throw new Error('Database not ready');
     const id = generateId();
     const now = Date.now();
@@ -202,6 +204,7 @@ export const [ObjectsProvider, useObjects] = createContextHook<ObjectsContextTyp
   }, [db, isReady, loadGroups]);
 
   const updateGroup = useCallback(async (id: string, name: string) => {
+    if (assertNotSubscriber()) return;
     if (!db || !isReady) throw new Error('Database not ready');
     try {
       await db.runAsync('UPDATE object_groups SET name = ? WHERE id = ?', [name, id]);
@@ -213,6 +216,7 @@ export const [ObjectsProvider, useObjects] = createContextHook<ObjectsContextTyp
   }, [db, isReady, loadGroups]);
 
   const deleteGroup = useCallback(async (id: string) => {
+    if (assertNotSubscriber()) return;
     if (!db || !isReady) throw new Error('Database not ready');
     try {
       await db.runAsync('UPDATE objects SET group_id = NULL WHERE group_id = ?', [id]);
@@ -225,6 +229,7 @@ export const [ObjectsProvider, useObjects] = createContextHook<ObjectsContextTyp
   }, [db, isReady, loadGroups, loadObjects]);
 
   const moveObjectToGroup = useCallback(async (objectId: string, groupId: string | null) => {
+    if (assertNotSubscriber()) return;
     if (!db || !isReady) throw new Error('Database not ready');
     try {
       await db.runAsync(
@@ -239,6 +244,7 @@ export const [ObjectsProvider, useObjects] = createContextHook<ObjectsContextTyp
   }, [db, isReady, loadObjects]);
 
   const updateObjectSystems = useCallback(async (objectId: string, systems: string[]) => {
+    if (assertNotSubscriber()) return;
     if (!db || !isReady) throw new Error('Database not ready');
     try {
       await db.runAsync(
@@ -253,6 +259,7 @@ export const [ObjectsProvider, useObjects] = createContextHook<ObjectsContextTyp
   }, [db, isReady, loadObjects]);
 
   const addObject = useCallback(async (name: string, address: string, groupId?: string): Promise<ObjectItem> => {
+    if (assertNotSubscriber()) throw new Error('subscriber-readonly');
     if (!db || !isReady) throw new Error('Database not ready');
     const id = generateId();
     const now = Date.now();
@@ -274,6 +281,7 @@ export const [ObjectsProvider, useObjects] = createContextHook<ObjectsContextTyp
   }, [db, isReady, loadObjects]);
 
   const updateObject = useCallback(async (id: string, updates: Partial<ObjectItem>) => {
+    if (assertNotSubscriber()) return;
     if (!db || !isReady) throw new Error('Database not ready');
     const sets: string[] = [];
     const values: any[] = [];
@@ -294,6 +302,7 @@ export const [ObjectsProvider, useObjects] = createContextHook<ObjectsContextTyp
   }, [db, isReady, loadObjects]);
 
   const deleteObject = useCallback(async (id: string) => {
+    if (assertNotSubscriber()) return;
     if (!db || !isReady) throw new Error('Database not ready');
 
     try {
@@ -342,6 +351,7 @@ export const [ObjectsProvider, useObjects] = createContextHook<ObjectsContextTyp
   }, [objects]);
 
   const addContact = useCallback(async (objectId: string, contact: Omit<ContactPerson, 'id' | 'objectId' | 'createdAt'>) => {
+    if (assertNotSubscriber()) return;
     if (!db || !isReady) throw new Error('Database not ready');
     const id = generateId();
     try {
@@ -357,6 +367,7 @@ export const [ObjectsProvider, useObjects] = createContextHook<ObjectsContextTyp
   }, [db, isReady, loadContacts]);
 
   const updateContact = useCallback(async (contactId: string, updates: Partial<ContactPerson>) => {
+    if (assertNotSubscriber()) return;
     if (!db || !isReady) throw new Error('Database not ready');
     const sets: string[] = [];
     const values: any[] = [];
@@ -375,6 +386,7 @@ export const [ObjectsProvider, useObjects] = createContextHook<ObjectsContextTyp
   }, [db, isReady, loadContacts]);
 
   const deleteContact = useCallback(async (contactId: string) => {
+    if (assertNotSubscriber()) return;
     if (!db || !isReady) throw new Error('Database not ready');
     try {
       await db.runAsync('DELETE FROM contacts WHERE id = ?', [contactId]);
@@ -388,6 +400,7 @@ export const [ObjectsProvider, useObjects] = createContextHook<ObjectsContextTyp
   const getContactsByObject = useCallback((objectId: string) => contacts[objectId] || [], [contacts]);
 
   const addDocument = useCallback(async (objectId: string, document: Omit<ObjectDocument, 'id' | 'objectId'>) => {
+    if (assertNotSubscriber()) return;
     if (!db || !isReady) throw new Error('Database not ready');
     const id = generateId();
     try {
@@ -403,6 +416,7 @@ export const [ObjectsProvider, useObjects] = createContextHook<ObjectsContextTyp
   }, [db, isReady, loadDocuments]);
 
   const updateDocument = useCallback(async (documentId: string, updates: Partial<ObjectDocument>) => {
+    if (assertNotSubscriber()) return;
     if (!db || !isReady) throw new Error('Database not ready');
     const sets: string[] = [];
     const values: any[] = [];
@@ -419,6 +433,7 @@ export const [ObjectsProvider, useObjects] = createContextHook<ObjectsContextTyp
   }, [db, isReady, loadDocuments]);
 
   const deleteDocument = useCallback(async (documentId: string) => {
+    if (assertNotSubscriber()) return;
     if (!db || !isReady) throw new Error('Database not ready');
 
     try {
@@ -441,6 +456,7 @@ export const [ObjectsProvider, useObjects] = createContextHook<ObjectsContextTyp
   const getDocumentsByObject = useCallback((objectId: string) => documents[objectId] || [], [documents]);
 
   const addWorkEntry = useCallback(async (objectId: string, entry: Omit<WorkEntry, 'id' | 'objectId' | 'createdAt'>) => {
+    if (assertNotSubscriber()) return;
     if (!db || !isReady) throw new Error('Database not ready');
     const id = generateId();
     const now = Date.now();
@@ -465,6 +481,7 @@ export const [ObjectsProvider, useObjects] = createContextHook<ObjectsContextTyp
   }, [db, isReady, loadWorkEntries]);
 
   const updateWorkEntry = useCallback(async (entryId: string, updates: Partial<WorkEntry>) => {
+    if (assertNotSubscriber()) return;
     if (!db || !isReady) throw new Error('Database not ready');
     const sets: string[] = [];
     const values: any[] = [];
@@ -486,6 +503,7 @@ export const [ObjectsProvider, useObjects] = createContextHook<ObjectsContextTyp
   }, [db, isReady, loadWorkEntries]);
 
   const deleteWorkEntry = useCallback(async (entryId: string) => {
+    if (assertNotSubscriber()) return;
     if (!db || !isReady) throw new Error('Database not ready');
 
     try {

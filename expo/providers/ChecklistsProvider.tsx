@@ -3,6 +3,7 @@ import createContextHook from '@nkzw/create-context-hook';
 import { ChecklistTemplate, ChecklistResult } from '@/types';
 import { useDatabase } from './DatabaseProvider';
 import { generateId } from '@/lib/utils';
+import { assertNotSubscriber } from './ProfileProvider';
 
 interface ChecklistsContextType {
   templates: ChecklistTemplate[];
@@ -68,6 +69,7 @@ export const [ChecklistsProvider, useChecklists] = createContextHook<ChecklistsC
   }, [isReady, refreshData]);
 
   const addTemplate = useCallback(async (name: string, items: { text: string }[]) => {
+    if (assertNotSubscriber()) return;
     if (!db) throw new Error('Database not ready');
     const id = generateId();
     const templateItems = items.map((item, index) => ({
@@ -82,6 +84,7 @@ export const [ChecklistsProvider, useChecklists] = createContextHook<ChecklistsC
   }, [db, loadTemplates]);
 
   const updateTemplate = useCallback(async (id: string, name: string, items: { text: string }[]) => {
+    if (assertNotSubscriber()) return;
     if (!db) throw new Error('Database not ready');
     const templateItems = items.map((item, index) => ({
       id: `${id}_item_${index}`,
@@ -95,6 +98,7 @@ export const [ChecklistsProvider, useChecklists] = createContextHook<ChecklistsC
   }, [db, loadTemplates]);
 
   const deleteTemplate = useCallback(async (id: string) => {
+    if (assertNotSubscriber()) return;
     if (!db) throw new Error('Database not ready');
     await db.runAsync('DELETE FROM checklist_templates WHERE id = ?', [id]);
     await loadTemplates();
@@ -103,6 +107,7 @@ export const [ChecklistsProvider, useChecklists] = createContextHook<ChecklistsC
   const getTemplate = useCallback((id: string) => templates.find(t => t.id === id), [templates]);
 
   const addResult = useCallback(async (result: Omit<ChecklistResult, 'id'>) => {
+    if (assertNotSubscriber()) return;
     if (!db) throw new Error('Database not ready');
     const id = generateId();
     const params: (string | number | null)[] = [
@@ -122,6 +127,7 @@ export const [ChecklistsProvider, useChecklists] = createContextHook<ChecklistsC
   }, [db, loadResults]);
 
   const updateResult = useCallback(async (id: string, updates: Partial<ChecklistResult>) => {
+    if (assertNotSubscriber()) return;
     if (!db) throw new Error('Database not ready');
     const sets: string[] = [];
     const values: any[] = [];
@@ -135,6 +141,7 @@ export const [ChecklistsProvider, useChecklists] = createContextHook<ChecklistsC
   }, [db, loadResults]);
 
   const deleteResult = useCallback(async (id: string) => {
+    if (assertNotSubscriber()) return;
     if (!db) throw new Error('Database not ready');
     await db.runAsync('DELETE FROM checklist_results WHERE id = ?', [id]);
     await loadResults();

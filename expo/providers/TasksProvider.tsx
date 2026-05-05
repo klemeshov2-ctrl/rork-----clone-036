@@ -4,6 +4,7 @@ import { Task } from '@/types';
 import { useDatabase } from './DatabaseProvider';
 import { generateId } from '@/lib/utils';
 import { scheduleTaskNotifications, cancelTaskNotifications } from '@/lib/notifications';
+import { assertNotSubscriber } from './ProfileProvider';
 
 interface TasksContextType {
   tasks: Task[];
@@ -88,6 +89,7 @@ export const [TasksProvider, useTasks] = createContextHook<TasksContextType>(() 
   }, [isReady, refreshData]);
 
   const addTask = useCallback(async (task: Omit<Task, 'id' | 'createdAt' | 'isCompleted' | 'completedAt'>) => {
+    if (assertNotSubscriber()) return;
     if (!db) throw new Error('Database not ready');
     const id = generateId();
     const now = Date.now();
@@ -106,6 +108,7 @@ export const [TasksProvider, useTasks] = createContextHook<TasksContextType>(() 
   }, [db, loadTasks, objectNameResolver]);
 
   const updateTask = useCallback(async (id: string, updates: Partial<Task>) => {
+    if (assertNotSubscriber()) return;
     if (!db) throw new Error('Database not ready');
     const sets: string[] = [];
     const values: any[] = [];
@@ -141,6 +144,7 @@ export const [TasksProvider, useTasks] = createContextHook<TasksContextType>(() 
   }, [db, loadTasks, tasks, objectNameResolver]);
 
   const deleteTask = useCallback(async (id: string) => {
+    if (assertNotSubscriber()) return;
     if (!db) throw new Error('Database not ready');
     void cancelTaskNotifications(id);
     await db.runAsync('DELETE FROM tasks WHERE id = ?', [id]);
