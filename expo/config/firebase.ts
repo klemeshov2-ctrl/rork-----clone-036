@@ -24,26 +24,41 @@ if (!config.apiKey) {
   console.error('[Firebase] WARNING: No API key found!');
 }
 
-const app: FirebaseApp = initializeApp(config);
+const isBrowser = typeof window !== 'undefined';
+const canInit = Platform.OS !== 'web' || isBrowser;
 
-let auth: Auth;
-if (Platform.OS === 'web') {
-  auth = getAuth(app);
+let app: FirebaseApp | undefined;
+let auth: Auth | undefined;
+let db: Firestore | undefined;
+
+if (canInit) {
+  app = initializeApp(config);
+
+  if (Platform.OS === 'web') {
+    auth = getAuth(app);
+  } else {
+    const { getReactNativePersistence } = require('firebase/auth');
+    auth = initializeAuth(app, {
+      persistence: getReactNativePersistence(AsyncStorage),
+    });
+  }
+
+  db = getFirestore(app);
+
+  console.log('[Firebase] DB ready:', !!db);
+  console.log('[Firebase] Auth ready:', !!auth);
+
+  if (auth) {
+    signInAnonymously(auth).catch((err) => {
+      console.error('[Firebase] Anonymous auth error:', err?.message);
+    });
+  }
 } else {
-  const { getReactNativePersistence } = require('firebase/auth');
-  auth = initializeAuth(app, {
-    persistence: getReactNativePersistence(AsyncStorage),
-  });
+  console.log('[Firebase] Skipping init (no window, likely SSR)');
 }
 
-const db: Firestore = getFirestore(app);
-
-console.log('[Firebase] DB ready:', !!db);
-console.log('[Firebase] Auth ready:', !!auth);
-
-signInAnonymously(auth).catch((err) => {
-  console.error('[Firebase] Anonymous auth error:', err?.message);
-});
-
-export { auth, db };
-export const firestore = db;
+// Typed exports - safe because these are only consumed in client runtime
+// (React Native always; web only after hydration in components/providers).
+const authExport = auth as Auth;
+const dbExport = db as Firestore;
+export { authExport as auth, dbExport as db, dbExport as firestore };
