@@ -1,9 +1,9 @@
-import { initializeApp, FirebaseApp } from 'firebase/app';
-import { initializeAuth, getAuth, Auth, signInAnonymously } from 'firebase/auth';
-import { getFirestore, Firestore } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
+import type { FirebaseApp } from 'firebase/app';
+import type { Auth } from 'firebase/auth';
+import type { Firestore } from 'firebase/firestore';
 
 function getFirebaseConfig() {
   const extraFirebase = Constants.expoConfig?.extra?.firebase;
@@ -17,14 +17,7 @@ function getFirebaseConfig() {
   };
 }
 
-const config = getFirebaseConfig();
-console.log('[Firebase] Initializing with project:', config.projectId);
-console.log('[Firebase] API key present:', !!config.apiKey);
-if (!config.apiKey) {
-  console.error('[Firebase] WARNING: No API key found!');
-}
-
-const isBrowser = typeof window !== 'undefined';
+const isBrowser = typeof window !== 'undefined' && typeof document !== 'undefined';
 const canInit = Platform.OS !== 'web' || isBrowser;
 
 let app: FirebaseApp | undefined;
@@ -32,33 +25,45 @@ let auth: Auth | undefined;
 let db: Firestore | undefined;
 
 if (canInit) {
-  app = initializeApp(config);
+  try {
+    const config = getFirebaseConfig();
+    console.log('[Firebase] Initializing with project:', config.projectId);
+    if (!config.apiKey) {
+      console.error('[Firebase] WARNING: No API key found!');
+    }
 
-  if (Platform.OS === 'web') {
-    auth = getAuth(app);
-  } else {
-    const { getReactNativePersistence } = require('firebase/auth');
-    auth = initializeAuth(app, {
-      persistence: getReactNativePersistence(AsyncStorage),
-    });
-  }
+    // Use require to avoid evaluating Firebase modules during web SSR.
+    const { initializeApp } = require('firebase/app');
+    const firebaseAuth = require('firebase/auth');
+    const { getFirestore } = require('firebase/firestore');
 
-  db = getFirestore(app);
+    app = initializeApp(config);
 
-  console.log('[Firebase] DB ready:', !!db);
-  console.log('[Firebase] Auth ready:', !!auth);
+    if (Platform.OS === 'web') {
+      auth = firebaseAuth.getAuth(app);
+    } else {
+      auth = firebaseAuth.initializeAuth(app, {
+        persistence: firebaseAuth.getReactNativePersistence(AsyncStorage),
+      });
+    }
 
-  if (auth) {
-    signInAnonymously(auth).catch((err) => {
-      console.error('[Firebase] Anonymous auth error:', err?.message);
-    });
+    db = getFirestore(app);
+
+    console.log('[Firebase] DB ready:', !!db);
+    console.log('[Firebase] Auth ready:', !!auth);
+
+    if (auth) {
+      firebaseAuth.signInAnonymously(auth).catch((err: Error) => {
+        console.error('[Firebase] Anonymous auth error:', err?.message);
+      });
+    }
+  } catch (err) {
+    console.error('[Firebase] Init error:', (err as Error)?.message);
   }
 } else {
-  console.log('[Firebase] Skipping init (no window, likely SSR)');
+  console.log('[Firebase] Skipping init (SSR)');
 }
 
-// Typed exports - safe because these are only consumed in client runtime
-// (React Native always; web only after hydration in components/providers).
 const authExport = auth as Auth;
 const dbExport = db as Firestore;
 export { authExport as auth, dbExport as db, dbExport as firestore };
