@@ -536,7 +536,7 @@ export default function SettingsScreen() {
             />
             <View style={styles.appInfoHeaderText}>
               <Text style={styles.appInfoName}>Журнал мастера</Text>
-              <Text style={styles.appInfoVersion}>v1.3</Text>
+              <Text style={styles.appInfoVersion}>v1.4</Text>
             </View>
           </View>
           <View style={styles.appInfoDivider} />

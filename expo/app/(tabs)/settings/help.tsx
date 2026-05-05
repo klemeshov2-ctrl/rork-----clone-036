@@ -572,7 +572,7 @@ export default function HelpScreen() {
           <Info size={16} color={colors.textMuted} />
           <Text style={styles.versionLabel}>Версия приложения</Text>
         </View>
-        <Text style={styles.versionValue}>1.3</Text>
+        <Text style={styles.versionValue}>1.4</Text>
       </View>
 
       <View style={{ height: 40 }} />
