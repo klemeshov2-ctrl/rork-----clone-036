@@ -361,79 +361,85 @@ export default function InventoryScreen() {
         </View>
       )}
 
-      {isAdding && (
-        <Card style={{ marginHorizontal: 16, marginBottom: 16 }}>
-          <View style={{ flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const, marginBottom: 16 }}>
-            <Text style={{ fontSize: 18, fontWeight: '600' as const, color: colors.text }}>Новый материал</Text>
-            <VoiceInputButton onResult={handleVoiceMaterialResult} size={36} />
-          </View>
-          <Input label="Название" value={name} onChangeText={setName} placeholder="Например: Дымовой датчик" />
-          <View style={{ flexDirection: 'row' as const }}>
-            <Input label="Кол-во" value={quantity} onChangeText={setQuantity} placeholder="0" keyboardType="numeric" containerStyle={{ flex: 1, marginRight: 8 }} />
-            <Input label="Единица" value={unit} onChangeText={setUnit} placeholder="шт" containerStyle={{ flex: 1 }} />
-          </View>
-          <Input label="Мин. запас" value={minQuantity} onChangeText={setMinQuantity} placeholder="2" keyboardType="numeric" />
-          {categories.length > 0 && (
-            <View style={{ marginBottom: 12 }}>
-              <Text style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 8 }}>Категория:</Text>
-              <View style={{ flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: 6 }}>
-                <TouchableOpacity
-                  style={[styles.catChip, !selectedCategoryId && styles.catChipActive]}
-                  onPress={() => setSelectedCategoryId(undefined)}
-                >
-                  <Text style={[styles.catChipText, !selectedCategoryId && styles.catChipTextActive]}>Без категории</Text>
-                </TouchableOpacity>
-                {categories.map(cat => (
-                  <TouchableOpacity
-                    key={cat.id}
-                    style={[styles.catChip, selectedCategoryId === cat.id && styles.catChipActive]}
-                    onPress={() => setSelectedCategoryId(cat.id)}
-                  >
-                    <Text style={[styles.catChipText, selectedCategoryId === cat.id && styles.catChipTextActive]}>{cat.name}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-          )}
-          <View style={{ flexDirection: 'row' as const, gap: 12, marginTop: 8 }}>
-            <Button title="Отмена" variant="ghost" onPress={() => setIsAdding(false)} style={{ flex: 1 }} />
-            <Button title="Добавить" onPress={handleAdd} disabled={!name.trim()} style={{ flex: 1 }} />
-          </View>
-        </Card>
-      )}
-
       {isLoading ? (
         <View style={styles.loadingContainer}><Text style={{ color: colors.textSecondary, fontSize: 16 }}>Загрузка...</Text></View>
       ) : (
-        <FlatList
-          data={categoryGrouped}
-          keyExtractor={(item) => item.category?.id || 'ungrouped'}
-          renderItem={({ item }) => (
-            <CategorySection
-              category={item.category}
-              items={item.items}
-              colors={colors}
-              isExpanded={expandedCategories[item.category?.id || 'ungrouped'] !== false}
-              onToggle={() => toggleCategory(item.category?.id || 'ungrouped')}
-              onEdit={item.category ? () => handleEditCategory(item.category!) : undefined}
-              onDelete={item.category ? () => handleDeleteCategory(item.category!) : undefined}
-              onUpdate={handleUpdateQuantity}
-              onDeleteItem={handleDelete}
-              onEditItem={handleEditItem}
-              onComments={(itemId) => { setCommentsItemId(itemId); setCommentsModalVisible(true); }}
-              commentsMap={inventoryCommentsMap}
-            />
-          )}
-          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100 }}
-          showsVerticalScrollIndicator={false}
-          ListEmptyComponent={
-            <View style={{ alignItems: 'center' as const, justifyContent: 'center' as const, paddingVertical: 60, gap: 16 }}>
-              <Package size={48} color={colors.textMuted} />
-              <Text style={{ fontSize: 16, color: colors.textSecondary }}>{searchQuery ? 'Ничего не найдено' : 'Склад пуст'}</Text>
-              {!searchQuery && <Button title="Добавить материал" variant="secondary" onPress={() => setIsAdding(true)} />}
-            </View>
-          }
-        />
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}
+        >
+          <FlatList
+            data={categoryGrouped}
+            keyExtractor={(item) => item.category?.id || 'ungrouped'}
+            keyboardShouldPersistTaps="handled"
+            renderItem={({ item }) => (
+              <CategorySection
+                category={item.category}
+                items={item.items}
+                colors={colors}
+                isExpanded={expandedCategories[item.category?.id || 'ungrouped'] !== false}
+                onToggle={() => toggleCategory(item.category?.id || 'ungrouped')}
+                onEdit={item.category ? () => handleEditCategory(item.category!) : undefined}
+                onDelete={item.category ? () => handleDeleteCategory(item.category!) : undefined}
+                onUpdate={handleUpdateQuantity}
+                onDeleteItem={handleDelete}
+                onEditItem={handleEditItem}
+                onComments={(itemId) => { setCommentsItemId(itemId); setCommentsModalVisible(true); }}
+                commentsMap={inventoryCommentsMap}
+              />
+            )}
+            ListHeaderComponent={isAdding ? (
+              <Card style={{ marginBottom: 16 }}>
+                <View style={{ flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const, marginBottom: 16 }}>
+                  <Text style={{ fontSize: 18, fontWeight: '600' as const, color: colors.text }}>Новый материал</Text>
+                  <VoiceInputButton onResult={handleVoiceMaterialResult} size={36} />
+                </View>
+                <Input label="Название" value={name} onChangeText={setName} placeholder="Например: Дымовой датчик" />
+                <View style={{ flexDirection: 'row' as const }}>
+                  <Input label="Кол-во" value={quantity} onChangeText={setQuantity} placeholder="0" keyboardType="numeric" containerStyle={{ flex: 1, marginRight: 8 }} />
+                  <Input label="Единица" value={unit} onChangeText={setUnit} placeholder="шт" containerStyle={{ flex: 1 }} />
+                </View>
+                <Input label="Мин. запас" value={minQuantity} onChangeText={setMinQuantity} placeholder="2" keyboardType="numeric" />
+                {categories.length > 0 && (
+                  <View style={{ marginBottom: 12 }}>
+                    <Text style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 8 }}>Категория:</Text>
+                    <View style={{ flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: 6 }}>
+                      <TouchableOpacity
+                        style={[styles.catChip, !selectedCategoryId && styles.catChipActive]}
+                        onPress={() => setSelectedCategoryId(undefined)}
+                      >
+                        <Text style={[styles.catChipText, !selectedCategoryId && styles.catChipTextActive]}>Без категории</Text>
+                      </TouchableOpacity>
+                      {categories.map(cat => (
+                        <TouchableOpacity
+                          key={cat.id}
+                          style={[styles.catChip, selectedCategoryId === cat.id && styles.catChipActive]}
+                          onPress={() => setSelectedCategoryId(cat.id)}
+                        >
+                          <Text style={[styles.catChipText, selectedCategoryId === cat.id && styles.catChipTextActive]}>{cat.name}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+                )}
+                <View style={{ flexDirection: 'row' as const, gap: 12, marginTop: 8 }}>
+                  <Button title="Отмена" variant="ghost" onPress={() => setIsAdding(false)} style={{ flex: 1 }} />
+                  <Button title="Добавить" onPress={handleAdd} disabled={!name.trim()} style={{ flex: 1 }} />
+                </View>
+              </Card>
+            ) : null}
+            contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 200 }}
+            showsVerticalScrollIndicator={false}
+            ListEmptyComponent={
+              <View style={{ alignItems: 'center' as const, justifyContent: 'center' as const, paddingVertical: 60, gap: 16 }}>
+                <Package size={48} color={colors.textMuted} />
+                <Text style={{ fontSize: 16, color: colors.textSecondary }}>{searchQuery ? 'Ничего не найдено' : 'Склад пуст'}</Text>
+                {!searchQuery && <Button title="Добавить материал" variant="secondary" onPress={() => setIsAdding(true)} />}
+              </View>
+            }
+          />
+        </KeyboardAvoidingView>
       )}
 
       <Modal visible={showCategoryModal} animationType="slide" transparent onRequestClose={() => { setShowCategoryModal(false); setEditingCategoryId(null); setCategoryNameInput(''); }}>
