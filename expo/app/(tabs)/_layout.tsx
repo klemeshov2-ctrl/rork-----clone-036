@@ -3,7 +3,6 @@ import { LayoutList, Package, ListChecks, BookOpen, Settings } from "lucide-reac
 import React from "react";
 import { View } from "react-native";
 import { useThemeColors } from "@/providers/ThemeProvider";
-import { SyncFloatingButton } from "@/components/SyncFloatingButton";
 import { SyncBottomSheet } from "@/components/SyncBottomSheet";
 
 export default function TabLayout() {
@@ -70,7 +69,6 @@ export default function TabLayout() {
           }}
         />
       </Tabs>
-      <SyncFloatingButton />
       <SyncBottomSheet />
     </View>
   );

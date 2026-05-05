@@ -1,18 +1,28 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { Bell } from 'lucide-react-native';
+import { Bell, Cloud, CloudOff, ArrowUpDown } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useThemeColors } from '@/providers/ThemeProvider';
 import { useComments } from '@/providers/CommentsProvider';
 import { useChat } from '@/providers/ChatProvider';
+import { useSyncPanel } from '@/providers/SyncPanelProvider';
+import { useBackup } from '@/providers/BackupProvider';
+import { useProfile } from '@/providers/ProfileProvider';
 
-export function NotificationBell({ size = 40 }: { size?: number }) {
+export function SyncHeaderButton({ size = 40 }: { size?: number }) {
   const colors = useThemeColors();
-  const { unreadCount: commentUnread } = useComments();
-  const { unreadMessagesCount: chatUnread } = useChat();
-  const router = useRouter();
+  const { open } = useSyncPanel();
+  const { isConnected, isPublishing, isMasterSyncing, isSyncingSubscription, isRestoring, syncProgress } = useBackup();
+  const { isSubscriberProfile, activeProfileId, profiles } = useProfile();
 
-  const totalUnread = commentUnread + chatUnread;
+  const activeSubscriptionLetter = useMemo(() => {
+    if (!isSubscriberProfile) return null;
+    const profile = profiles.find(p => p.id === activeProfileId);
+    if (!profile || !profile.name) return null;
+    return profile.name.substring(0, 2).toUpperCase();
+  }, [isSubscriberProfile, activeProfileId, profiles]);
+
+  const isBusy = isPublishing || isMasterSyncing || !!isSyncingSubscription || isRestoring || !!syncProgress;
 
   return (
     <TouchableOpacity
@@ -23,35 +33,111 @@ export function NotificationBell({ size = 40 }: { size?: number }) {
           height: size,
           borderRadius: size / 2,
           backgroundColor: colors.surfaceElevated,
-          borderColor: colors.border,
+          borderColor: isBusy ? colors.warning + '80' : colors.border,
         },
       ]}
-      onPress={() => router.push('/notifications' as any)}
+      onPress={open}
       activeOpacity={0.7}
-      testID="notification-bell"
+      testID="sync-header-btn"
     >
-      <Bell size={size * 0.5} color={colors.text} />
-      {totalUnread > 0 && (
-        <View
-          style={[
-            styles.badge,
-            { backgroundColor: colors.error },
-          ]}
-        >
-          <Text style={styles.badgeText}>
-            {totalUnread > 99 ? '99+' : totalUnread}
-          </Text>
+      {syncProgress ? (
+        <ArrowUpDown size={size * 0.5} color={colors.info} />
+      ) : isConnected ? (
+        <Cloud size={size * 0.5} color={isBusy ? colors.warning : colors.primary} />
+      ) : (
+        <CloudOff size={size * 0.5} color={colors.textMuted} />
+      )}
+      {isBusy && <View style={[styles.busyDot, { backgroundColor: colors.warning }]} />}
+      {activeSubscriptionLetter && !isBusy && (
+        <View style={[styles.subscriptionBadge, { backgroundColor: colors.primary, borderColor: colors.surfaceElevated }]}>
+          <Text style={styles.subscriptionLetter}>{activeSubscriptionLetter}</Text>
         </View>
       )}
     </TouchableOpacity>
   );
 }
 
+export function NotificationBell({ size = 40 }: { size?: number }) {
+  const colors = useThemeColors();
+  const { unreadCount: commentUnread } = useComments();
+  const { unreadMessagesCount: chatUnread } = useChat();
+  const router = useRouter();
+
+  const totalUnread = commentUnread + chatUnread;
+
+  return (
+    <View style={styles.row}>
+      <SyncHeaderButton size={size} />
+      <TouchableOpacity
+        style={[
+          styles.container,
+          {
+            width: size,
+            height: size,
+            borderRadius: size / 2,
+            backgroundColor: colors.surfaceElevated,
+            borderColor: colors.border,
+          },
+        ]}
+        onPress={() => router.push('/notifications' as any)}
+        activeOpacity={0.7}
+        testID="notification-bell"
+      >
+        <Bell size={size * 0.5} color={colors.text} />
+        {totalUnread > 0 && (
+          <View
+            style={[
+              styles.badge,
+              { backgroundColor: colors.error },
+            ]}
+          >
+            <Text style={styles.badgeText}>
+              {totalUnread > 99 ? '99+' : totalUnread}
+            </Text>
+          </View>
+        )}
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   container: {
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
+  },
+  busyDot: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  subscriptionBadge: {
+    position: 'absolute',
+    bottom: -4,
+    right: -6,
+    minWidth: 24,
+    height: 18,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    paddingHorizontal: 4,
+  },
+  subscriptionLetter: {
+    fontSize: 10,
+    fontWeight: '800' as const,
+    color: '#FFFFFF',
+    lineHeight: 16,
+    letterSpacing: -0.3,
   },
   badge: {
     position: 'absolute',
