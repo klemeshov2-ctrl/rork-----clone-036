@@ -12,7 +12,7 @@ import {
   Platform,
   Keyboard,
 } from 'react-native';
-import { Bell, Check, ChevronRight, MessageCircle, MessageSquare, Send, Trash2, Users, Sparkles, Building2, Package, BookOpen, Wrench, ClipboardList } from 'lucide-react-native';
+import { Bell, Check, ChevronRight, MessageCircle, MessageSquare, Send, Trash2, Users, Sparkles, Building2, Package, BookOpen, Wrench, ClipboardList, FileText, Image as ImageIcon, Paperclip } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -481,7 +481,7 @@ function UpdatesPane({
   onMarkAllSeen,
   hasLoaded,
 }: {
-  rows: Array<{ id: string; type: 'object' | 'work_entry' | 'inventory' | 'knowledge' | 'task'; title: string; subtitle?: string; timestamp: number }>;
+  rows: Array<{ id: string; type: 'object' | 'work_entry' | 'inventory' | 'knowledge' | 'task' | 'file'; title: string; subtitle?: string; timestamp: number }>;
   colors: ThemeColors;
   onItemPress: (row: any) => void;
   onMarkAllSeen: () => void;
@@ -497,6 +497,7 @@ function UpdatesPane({
       case 'inventory': return <Package size={size} color={colors.success} />;
       case 'knowledge': return <BookOpen size={size} color={colors.info} />;
       case 'task': return <ClipboardList size={size} color={colors.warning} />;
+      case 'file': return <Paperclip size={size} color={colors.info} />;
       default: return <Bell size={size} color={colors.textMuted} />;
     }
   }, [colors]);
@@ -508,6 +509,7 @@ function UpdatesPane({
       case 'inventory': return 'Склад';
       case 'knowledge': return 'База знаний';
       case 'task': return 'Задача';
+      case 'file': return 'Файл';
       default: return 'Обновление';
     }
   };
@@ -608,7 +610,7 @@ export default function NotificationsScreen() {
   const router = useRouter();
 
   const [activeTab, setActiveTab] = useState<'comments' | 'chats' | 'updates'>('comments');
-  const { objects, workEntries } = useObjects();
+  const { objects, workEntries, documents } = useObjects();
   const { items: inventoryItems } = useInventory();
   const { items: knowledgeItems } = useKnowledge();
   const { tasks } = useTasks();
@@ -635,12 +637,13 @@ export default function NotificationsScreen() {
 
   type UpdateRow = {
     id: string;
-    type: 'object' | 'work_entry' | 'inventory' | 'knowledge' | 'task';
+    type: 'object' | 'work_entry' | 'inventory' | 'knowledge' | 'task' | 'file';
     title: string;
     subtitle?: string;
     timestamp: number;
     objectId?: string;
     entityId?: string;
+    fileKind?: 'document' | 'photo' | 'pdf' | 'knowledge';
   };
 
   const updateRows: UpdateRow[] = useMemo(() => {
@@ -654,6 +657,22 @@ export default function NotificationsScreen() {
         if (e.createdAt > lastSeen) {
           const objName = objects.find(o => o.id === e.objectId)?.name;
           rows.push({ id: 'we_' + e.id, type: 'work_entry', title: e.description.slice(0, 80) || 'Запись работ', subtitle: objName, timestamp: e.createdAt, objectId: e.objectId, entityId: e.id });
+          (e.photos || []).forEach((p, idx) => {
+            if (e.createdAt > lastSeen) {
+              rows.push({ id: 'wep_' + e.id + '_' + idx, type: 'file', title: 'Фото к записи работ', subtitle: objName, timestamp: e.createdAt, objectId: e.objectId, entityId: e.id, fileKind: 'photo' });
+            }
+          });
+          if (e.attachedPdfId) {
+            rows.push({ id: 'wepdf_' + e.id, type: 'file', title: 'PDF к записи работ', subtitle: objName, timestamp: e.createdAt, objectId: e.objectId, entityId: e.id, fileKind: 'pdf' });
+          }
+        }
+      });
+    });
+    Object.values(documents).forEach(arr => {
+      arr.forEach(d => {
+        if (d.uploadedAt > lastSeen) {
+          const objName = objects.find(o => o.id === d.objectId)?.name;
+          rows.push({ id: 'doc_' + d.id, type: 'file', title: d.name, subtitle: objName, timestamp: d.uploadedAt, objectId: d.objectId, entityId: d.id, fileKind: 'document' });
         }
       });
     });
@@ -662,14 +681,19 @@ export default function NotificationsScreen() {
       if (ts > lastSeen) rows.push({ id: 'inv_' + i.id, type: 'inventory', title: i.name, subtitle: `${i.quantity} ${i.unit}`, timestamp: ts });
     });
     knowledgeItems.forEach(k => {
-      if (k.createdAt > lastSeen) rows.push({ id: 'kn_' + k.id, type: 'knowledge', title: k.title, subtitle: k.category, timestamp: k.createdAt });
+      if (k.createdAt > lastSeen) {
+        rows.push({ id: 'kn_' + k.id, type: 'knowledge', title: k.title, subtitle: k.category, timestamp: k.createdAt });
+        if (k.filePath || k.fileUrl) {
+          rows.push({ id: 'knf_' + k.id, type: 'file', title: k.title, subtitle: k.category || 'База знаний', timestamp: k.createdAt, entityId: k.id, fileKind: 'knowledge' });
+        }
+      }
     });
     tasks.forEach(t => {
       if (t.createdAt > lastSeen) rows.push({ id: 'tk_' + t.id, type: 'task', title: t.title, subtitle: t.objectName, timestamp: t.createdAt, entityId: t.id });
     });
     rows.sort((a, b) => b.timestamp - a.timestamp);
     return rows;
-  }, [objects, workEntries, inventoryItems, knowledgeItems, tasks, lastSeen]);
+  }, [objects, workEntries, documents, inventoryItems, knowledgeItems, tasks, lastSeen]);
 
   const updatesCount = updateRows.length;
 
@@ -693,6 +717,13 @@ export default function NotificationsScreen() {
         break;
       case 'task':
         router.navigate('/(tabs)/reminders' as any);
+        break;
+      case 'file':
+        if (row.fileKind === 'knowledge') {
+          router.navigate('/(tabs)/knowledge' as any);
+        } else if (row.objectId) {
+          router.push({ pathname: '/(home)/object-detail' as any, params: { id: row.objectId } });
+        }
         break;
     }
   }, [router]);
