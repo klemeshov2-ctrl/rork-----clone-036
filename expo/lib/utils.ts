@@ -93,7 +93,7 @@ export const DOCUMENT_PICKER_TYPES = [
 ];
 
 export function isLowInventory(quantity: number, minQuantity: number): boolean {
-  return quantity <= minQuantity;
+  return quantity < minQuantity;
 }
 
 export function truncateText(text: string, maxLength: number): string {

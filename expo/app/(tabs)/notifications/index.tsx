@@ -12,7 +12,8 @@ import {
   Platform,
   Keyboard,
 } from 'react-native';
-import { Check, ChevronRight, MessageCircle, MessageSquare, Send, Trash2, Users } from 'lucide-react-native';
+import { Bell, Check, ChevronRight, MessageCircle, MessageSquare, Send, Trash2, Users, Sparkles, Building2, Package, BookOpen, Wrench, ClipboardList } from 'lucide-react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemeColors } from '@/providers/ThemeProvider';
@@ -20,6 +21,9 @@ import { ThemeColors } from '@/constants/colors';
 import { useComments } from '@/providers/CommentsProvider';
 import { useChat } from '@/providers/ChatProvider';
 import { useObjects } from '@/providers/ObjectsProvider';
+import { useInventory } from '@/providers/InventoryProvider';
+import { useKnowledge } from '@/providers/KnowledgeProvider';
+import { useTasks } from '@/providers/TasksProvider';
 import type { Comment, CommentEntityType, ChatMessage, FirestoreSubscription } from '@/types';
 import { useBackup } from '@/providers/BackupProvider';
 import { useProfile } from '@/providers/ProfileProvider';
@@ -470,6 +474,129 @@ function InlineChatView({
   );
 }
 
+function UpdatesPane({
+  rows,
+  colors,
+  onItemPress,
+  onMarkAllSeen,
+  hasLoaded,
+}: {
+  rows: Array<{ id: string; type: 'object' | 'work_entry' | 'inventory' | 'knowledge' | 'task'; title: string; subtitle?: string; timestamp: number }>;
+  colors: ThemeColors;
+  onItemPress: (row: any) => void;
+  onMarkAllSeen: () => void;
+  hasLoaded: boolean;
+}) {
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
+  const renderIcon = useCallback((type: string) => {
+    const size = 18;
+    switch (type) {
+      case 'object': return <Building2 size={size} color={colors.primary} />;
+      case 'work_entry': return <Wrench size={size} color={colors.warning} />;
+      case 'inventory': return <Package size={size} color={colors.success} />;
+      case 'knowledge': return <BookOpen size={size} color={colors.info} />;
+      case 'task': return <ClipboardList size={size} color={colors.warning} />;
+      default: return <Bell size={size} color={colors.textMuted} />;
+    }
+  }, [colors]);
+
+  const labelFor = (type: string): string => {
+    switch (type) {
+      case 'object': return 'Объект';
+      case 'work_entry': return 'Запись работ';
+      case 'inventory': return 'Склад';
+      case 'knowledge': return 'База знаний';
+      case 'task': return 'Задача';
+      default: return 'Обновление';
+    }
+  };
+
+  if (!hasLoaded) {
+    return (
+      <View style={styles.emptyContainer}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
+
+  if (rows.length === 0) {
+    return (
+      <View style={styles.emptyContainer}>
+        <Sparkles size={48} color={colors.textMuted} />
+        <Text style={styles.emptyTitle}>Нет обновлений</Text>
+        <Text style={styles.emptySubtext}>После синхронизации здесь появятся изменения от мастера</Text>
+      </View>
+    );
+  }
+
+  return (
+    <>
+      <View style={styles.headerActions}>
+        <Text style={styles.countText}>
+          {rows.length} новых
+        </Text>
+        <TouchableOpacity
+          style={styles.markAllBtn}
+          onPress={onMarkAllSeen}
+          activeOpacity={0.7}
+        >
+          <Check size={14} color={colors.primary} />
+          <Text style={styles.markAllText}>Отметить всё</Text>
+        </TouchableOpacity>
+      </View>
+      <FlatList
+        data={rows}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => (
+          <TouchableOpacity
+            style={{
+              backgroundColor: colors.surfaceElevated,
+              borderRadius: 14,
+              padding: 14,
+              marginBottom: 10,
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderLeftWidth: 3,
+              borderLeftColor: colors.warning,
+              flexDirection: 'row' as const,
+              alignItems: 'center' as const,
+              gap: 12,
+            }}
+            onPress={() => onItemPress(item)}
+            activeOpacity={0.7}
+          >
+            <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: colors.surface, alignItems: 'center' as const, justifyContent: 'center' as const }}>
+              {renderIcon(item.type)}
+            </View>
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: 'row' as const, alignItems: 'center' as const, gap: 6, marginBottom: 3 }}>
+                <Text style={{ fontSize: 11, fontWeight: '700' as const, color: colors.warning, textTransform: 'uppercase' as const, letterSpacing: 0.4 }}>
+                  {labelFor(item.type)}
+                </Text>
+                <Text style={{ fontSize: 11, color: colors.textMuted, flex: 1 }} numberOfLines={1}>
+                  {formatDate(item.timestamp)}
+                </Text>
+              </View>
+              <Text style={{ fontSize: 14, fontWeight: '600' as const, color: colors.text }} numberOfLines={2}>
+                {item.title}
+              </Text>
+              {item.subtitle ? (
+                <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }} numberOfLines={1}>
+                  {item.subtitle}
+                </Text>
+              ) : null}
+            </View>
+            <ChevronRight size={16} color={colors.textMuted} />
+          </TouchableOpacity>
+        )}
+        contentContainerStyle={styles.listContent}
+        showsVerticalScrollIndicator={false}
+      />
+    </>
+  );
+}
+
 export default function NotificationsScreen() {
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -480,7 +607,95 @@ export default function NotificationsScreen() {
   const { isSubscriberProfile, activeProfileId } = useProfile();
   const router = useRouter();
 
-  const [activeTab, setActiveTab] = useState<'comments' | 'chats'>('comments');
+  const [activeTab, setActiveTab] = useState<'comments' | 'chats' | 'updates'>('comments');
+  const { objects, workEntries } = useObjects();
+  const { items: inventoryItems } = useInventory();
+  const { items: knowledgeItems } = useKnowledge();
+  const { tasks } = useTasks();
+
+  const updatesSeenKey = useMemo(() => `@updates_seen_${activeProfileId}`, [activeProfileId]);
+  const [lastSeen, setLastSeen] = useState<number>(0);
+  const [hasLoadedSeen, setHasLoadedSeen] = useState<boolean>(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const v = await AsyncStorage.getItem(updatesSeenKey);
+        if (!cancelled) {
+          setLastSeen(v ? parseInt(v, 10) || 0 : 0);
+          setHasLoadedSeen(true);
+        }
+      } catch {
+        if (!cancelled) setHasLoadedSeen(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [updatesSeenKey]);
+
+  type UpdateRow = {
+    id: string;
+    type: 'object' | 'work_entry' | 'inventory' | 'knowledge' | 'task';
+    title: string;
+    subtitle?: string;
+    timestamp: number;
+    objectId?: string;
+    entityId?: string;
+  };
+
+  const updateRows: UpdateRow[] = useMemo(() => {
+    const rows: UpdateRow[] = [];
+    objects.forEach(o => {
+      const ts = o.updatedAt || o.createdAt;
+      if (ts > lastSeen) rows.push({ id: 'obj_' + o.id, type: 'object', title: o.name, subtitle: o.address || undefined, timestamp: ts, objectId: o.id });
+    });
+    Object.values(workEntries).forEach(arr => {
+      arr.forEach(e => {
+        if (e.createdAt > lastSeen) {
+          const objName = objects.find(o => o.id === e.objectId)?.name;
+          rows.push({ id: 'we_' + e.id, type: 'work_entry', title: e.description.slice(0, 80) || 'Запись работ', subtitle: objName, timestamp: e.createdAt, objectId: e.objectId, entityId: e.id });
+        }
+      });
+    });
+    inventoryItems.forEach(i => {
+      const ts = i.updatedAt || i.createdAt;
+      if (ts > lastSeen) rows.push({ id: 'inv_' + i.id, type: 'inventory', title: i.name, subtitle: `${i.quantity} ${i.unit}`, timestamp: ts });
+    });
+    knowledgeItems.forEach(k => {
+      if (k.createdAt > lastSeen) rows.push({ id: 'kn_' + k.id, type: 'knowledge', title: k.title, subtitle: k.category, timestamp: k.createdAt });
+    });
+    tasks.forEach(t => {
+      if (t.createdAt > lastSeen) rows.push({ id: 'tk_' + t.id, type: 'task', title: t.title, subtitle: t.objectName, timestamp: t.createdAt, entityId: t.id });
+    });
+    rows.sort((a, b) => b.timestamp - a.timestamp);
+    return rows;
+  }, [objects, workEntries, inventoryItems, knowledgeItems, tasks, lastSeen]);
+
+  const updatesCount = updateRows.length;
+
+  const markUpdatesSeen = useCallback(async () => {
+    const now = Date.now();
+    setLastSeen(now);
+    try { await AsyncStorage.setItem(updatesSeenKey, String(now)); } catch {}
+  }, [updatesSeenKey]);
+
+  const navigateToUpdate = useCallback((row: UpdateRow) => {
+    switch (row.type) {
+      case 'object':
+      case 'work_entry':
+        if (row.objectId) router.push({ pathname: '/(home)/object-detail' as any, params: { id: row.objectId } });
+        break;
+      case 'inventory':
+        router.navigate('/(tabs)/inventory' as any);
+        break;
+      case 'knowledge':
+        router.navigate('/(tabs)/knowledge' as any);
+        break;
+      case 'task':
+        router.navigate('/(tabs)/reminders' as any);
+        break;
+    }
+  }, [router]);
 
   const currentUserId = chatUserId;
 
@@ -611,7 +826,7 @@ export default function NotificationsScreen() {
         >
           <MessageSquare size={16} color={activeTab === 'comments' ? colors.primary : colors.textMuted} />
           <Text style={[styles.tabText, activeTab === 'comments' && styles.tabTextActive]}>
-            Комментарии
+            Коммент.
           </Text>
           {commentUnreadCount > 0 && (
             <View style={[styles.tabBadge, { backgroundColor: colors.primary }]}>
@@ -638,9 +853,36 @@ export default function NotificationsScreen() {
             </View>
           )}
         </TouchableOpacity>
+        {isSubscriberProfile && (
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'updates' && styles.tabActive]}
+            onPress={() => setActiveTab('updates')}
+            activeOpacity={0.7}
+          >
+            <Sparkles size={16} color={activeTab === 'updates' ? colors.primary : colors.textMuted} />
+            <Text style={[styles.tabText, activeTab === 'updates' && styles.tabTextActive]}>
+              Обновл.
+            </Text>
+            {updatesCount > 0 && (
+              <View style={[styles.tabBadge, { backgroundColor: colors.warning }]}>
+                <Text style={styles.tabBadgeText}>
+                  {updatesCount > 99 ? '99+' : updatesCount}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        )}
       </View>
 
-      {activeTab === 'comments' ? (
+      {activeTab === 'updates' && isSubscriberProfile ? (
+        <UpdatesPane
+          rows={updateRows}
+          colors={colors}
+          onItemPress={navigateToUpdate}
+          onMarkAllSeen={markUpdatesSeen}
+          hasLoaded={hasLoadedSeen}
+        />
+      ) : activeTab === 'comments' ? (
         <>
           {unreadComments.length > 0 && (
             <View style={styles.headerActions}>

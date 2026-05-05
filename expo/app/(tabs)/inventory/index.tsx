@@ -240,7 +240,8 @@ export default function InventoryScreen() {
 
   const handleAdd = async () => {
     const qty = parseInt(quantity) || 0;
-    const min = parseInt(minQuantity) || 2;
+    const minParsed = parseInt(minQuantity, 10);
+    const min = Number.isFinite(minParsed) && minParsed >= 0 ? minParsed : 2;
     if (!name.trim()) { Alert.alert('Ошибка', 'Введите название'); return; }
     const ok = await guardEdit();
     if (!ok) return;
@@ -278,7 +279,7 @@ export default function InventoryScreen() {
       name: editName.trim(),
       quantity: parseInt(editQuantity) || 0,
       unit: editUnit.trim() || 'шт',
-      minQuantity: parseInt(editMinQuantity) || 2,
+      minQuantity: (() => { const v = parseInt(editMinQuantity, 10); return Number.isFinite(v) && v >= 0 ? v : 2; })(),
       categoryId: editCategoryId,
     });
     setShowEditModal(false);

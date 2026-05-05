@@ -309,7 +309,12 @@ export default function CreateTaskScreen() {
                 <X size={18} color={colors.textMuted} />
               </TouchableOpacity>
             </View>
-            <View style={styles.objectList}>
+            <ScrollView
+              style={styles.objectList}
+              nestedScrollEnabled
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={true}
+            >
               {taskType !== 'request' && (
                 <TouchableOpacity
                   style={[styles.objectItem, !selectedObjectId && styles.objectItemActive]}
@@ -334,7 +339,7 @@ export default function CreateTaskScreen() {
                   <Text style={{ color: colors.primary, fontSize: 14, fontWeight: '600' as const }}>Создать «{objectSearchText.trim()}»</Text>
                 </TouchableOpacity>
               )}
-            </View>
+            </ScrollView>
           </View>
         )}
 
@@ -579,7 +584,7 @@ function createStyles(colors: ThemeColors) { return StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     overflow: 'hidden' as const,
-    maxHeight: 200,
+    maxHeight: 280,
   },
   objectItem: {
     paddingVertical: 12,

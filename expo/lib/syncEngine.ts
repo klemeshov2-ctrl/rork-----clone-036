@@ -54,6 +54,12 @@ export async function buildSyncFiles(db: SQLite.SQLiteDatabase): Promise<Record<
   const allContacts = await db.getAllAsync('SELECT * FROM contacts');
   const allDocuments = await db.getAllAsync('SELECT * FROM object_documents');
 
+  const objectGroups = await db.getAllAsync('SELECT * FROM object_groups');
+  files['groups.json'] = JSON.stringify(objectGroups);
+
+  const inventoryCategories = await db.getAllAsync('SELECT * FROM inventory_categories');
+  files['categories.json'] = JSON.stringify(inventoryCategories);
+
   for (const obj of objects as any[]) {
     const contacts = (allContacts as any[]).filter((c: any) => c.object_id === obj.id);
     const documents = (allDocuments as any[]).filter((d: any) => d.object_id === obj.id);
@@ -162,12 +168,42 @@ export async function restoreFromSyncFiles(
   await db.execAsync('DELETE FROM reminders');
   await db.execAsync('DELETE FROM tasks');
   await db.execAsync('DELETE FROM inventory');
+  await db.execAsync('DELETE FROM inventory_categories');
   await db.execAsync('DELETE FROM checklist_results');
   await db.execAsync('DELETE FROM checklist_templates');
   await db.execAsync('DELETE FROM work_entries');
   await db.execAsync('DELETE FROM object_documents');
   await db.execAsync('DELETE FROM contacts');
   await db.execAsync('DELETE FROM objects');
+  await db.execAsync('DELETE FROM object_groups');
+
+  if (files['groups.json']) {
+    try {
+      const groups = JSON.parse(files['groups.json']);
+      for (const g of groups) {
+        await db.runAsync(
+          'INSERT OR REPLACE INTO object_groups (id, name, created_at) VALUES (?, ?, ?)',
+          [g.id, g.name, g.created_at || Date.now()]
+        );
+      }
+    } catch (e) {
+      console.log('[SyncEngine] Error restoring object_groups:', e);
+    }
+  }
+
+  if (files['categories.json']) {
+    try {
+      const cats = JSON.parse(files['categories.json']);
+      for (const c of cats) {
+        await db.runAsync(
+          'INSERT OR REPLACE INTO inventory_categories (id, name) VALUES (?, ?)',
+          [c.id, c.name]
+        );
+      }
+    } catch (e) {
+      console.log('[SyncEngine] Error restoring inventory_categories:', e);
+    }
+  }
 
   for (const [path, content] of Object.entries(files)) {
     if (!path.startsWith('objects/')) continue;
@@ -175,8 +211,8 @@ export async function restoreFromSyncFiles(
       const data = JSON.parse(content);
       const obj = data.object;
       await db.runAsync(
-        'INSERT OR REPLACE INTO objects (id, name, address, created_at, updated_at, sync_status) VALUES (?, ?, ?, ?, ?, ?)',
-        [obj.id, obj.name, obj.address, obj.created_at, obj.updated_at, 'synced']
+        'INSERT OR REPLACE INTO objects (id, name, address, group_id, systems, created_at, updated_at, sync_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [obj.id, obj.name, obj.address, obj.group_id || null, obj.systems || '[]', obj.created_at, obj.updated_at, 'synced']
       );
       for (const c of (data.contacts || [])) {
         await db.runAsync(
@@ -212,9 +248,10 @@ export async function restoreFromSyncFiles(
     try {
       const items = JSON.parse(files['inventory.json']);
       for (const i of items) {
+        const minQ = (i.min_quantity === undefined || i.min_quantity === null || isNaN(Number(i.min_quantity))) ? 2 : Number(i.min_quantity);
         await db.runAsync(
-          'INSERT OR REPLACE INTO inventory (id, name, quantity, unit, min_quantity, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-          [i.id, i.name, i.quantity, i.unit, i.min_quantity || 2, i.created_at, i.updated_at]
+          'INSERT OR REPLACE INTO inventory (id, name, quantity, unit, min_quantity, category_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+          [i.id, i.name, i.quantity, i.unit, minQ, i.category_id || null, i.created_at, i.updated_at]
         );
       }
     } catch (e) {
@@ -343,6 +380,9 @@ export async function convertBackupDataToSyncFiles(backupData: any): Promise<Rec
     const objDocs = documents.filter((d: any) => d.object_id === obj.id);
     files[`objects/object_${obj.id}.json`] = JSON.stringify({ object: obj, contacts: objContacts, documents: objDocs });
   }
+
+  files['groups.json'] = JSON.stringify(backupData.objectGroups || []);
+  files['categories.json'] = JSON.stringify(backupData.inventoryCategories || []);
 
   const workEntries = backupData.workEntries || [];
   for (const entry of workEntries) {
