@@ -117,15 +117,15 @@ export function NotificationBell({ size = 40 }: { size?: number }) {
             width: size,
             height: size,
             borderRadius: size / 2,
-            backgroundColor: colors.surfaceElevated,
-            borderColor: colors.border,
+            backgroundColor: totalUnread > 0 ? colors.error + '22' : colors.surfaceElevated,
+            borderColor: totalUnread > 0 ? colors.error : colors.border,
           },
         ]}
         onPress={() => router.push('/notifications' as any)}
         activeOpacity={0.7}
         testID="notification-bell"
       >
-        <Bell size={size * 0.5} color={colors.text} />
+        <Bell size={size * 0.5} color={totalUnread > 0 ? colors.error : colors.text} fill={totalUnread > 0 ? colors.error : 'transparent'} />
         {totalUnread > 0 && (
           <View
             style={[
