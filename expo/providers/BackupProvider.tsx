@@ -277,7 +277,7 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
   const prevSubscriberIdsRef = useRef<Set<string>>(new Set());
   const [firebaseUid, setFirebaseUid] = useState<string | null>(auth.currentUser?.uid || null);
 
-  const { activeProfileId, refreshProfiles } = useProfile();
+  const { activeProfileId, refreshProfiles, isSubscriberProfile } = useProfile();
 
   useEffect(() => {
     console.log('[Backup] Setting up Firebase auth state listener...');
@@ -1208,6 +1208,10 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
 
   const createBackup = useCallback(async () => {
     if (!accessToken) throw new Error('Not authenticated');
+    if (isSubscriberProfile) {
+      console.log('[Backup] Skip createBackup: active profile is subscriber, refusing to upload subscription data to Yandex Disk');
+      throw new Error('Загрузка отключена в режиме подписчика. Данные мастера не загружаются на ваш Яндекс Диск.');
+    }
     setIsCreatingBackup(true);
     try {
       setSyncProgress({ phase: 'preparing', current: 0, total: 0, currentFile: 'Подготовка данных...' });
@@ -1237,7 +1241,7 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
     } finally {
       setIsCreatingBackup(false);
     }
-  }, [accessToken, collectBackupData, uploadFilesToDiskAndUpdateDb]);
+  }, [accessToken, collectBackupData, uploadFilesToDiskAndUpdateDb, isSubscriberProfile]);
 
   const restoreFilesFromZip = useCallback(async (zip: JSZip, targetDb?: SQLite.SQLiteDatabase): Promise<void> => {
     const database = targetDb || db;
@@ -1489,6 +1493,10 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
   const publishBackup = useCallback(async (): Promise<string> => {
     if (!accessToken) throw new Error('Not authenticated');
     if (!db) throw new Error('Database not ready');
+    if (isSubscriberProfile) {
+      console.log('[Backup] Skip publishBackup: active profile is subscriber, refusing to upload subscription data to Yandex Disk');
+      throw new Error('Публикация отключена в режиме подписчика. Данные мастера не загружаются на ваш Яндекс Диск.');
+    }
     setIsPublishing(true);
     try {
       await migrateFromZipIfNeeded(accessToken);
@@ -1695,7 +1703,7 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
     } finally {
       setIsPublishing(false);
     }
-  }, [accessToken, db, masterPublicUrl, ensureSyncFolderStructure, getRemoteManifest, saveLocalManifest, migrateFromZipIfNeeded, uploadFilesToDiskAndUpdateDb, collectBackupData, masterId, yandexUserId, userEmail]);
+  }, [accessToken, db, masterPublicUrl, ensureSyncFolderStructure, getRemoteManifest, saveLocalManifest, migrateFromZipIfNeeded, uploadFilesToDiskAndUpdateDb, collectBackupData, masterId, yandexUserId, userEmail, isSubscriberProfile]);
 
   const syncFromPublicFolder = useCallback(async (publicUrl: string, targetDb?: SQLite.SQLiteDatabase) => {
     const database = targetDb || db;
@@ -2614,7 +2622,7 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
   }, [autoBackupEnabled]);
 
   useEffect(() => {
-    if (accessToken && autoBackupEnabled && isReady) {
+    if (accessToken && autoBackupEnabled && isReady && !isSubscriberProfile) {
       const checkAutoBackup = async () => {
         try {
           const lastDate = await AsyncStorage.getItem(LAST_BACKUP_KEY);
@@ -2641,7 +2649,7 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
       };
       void checkAutoBackup();
     }
-  }, [accessToken, autoBackupEnabled, isReady, collectBackupData, uploadFilesToDiskAndUpdateDb]);
+  }, [accessToken, autoBackupEnabled, isReady, collectBackupData, uploadFilesToDiskAndUpdateDb, isSubscriberProfile]);
 
   useEffect(() => {
     if (syncTimerRef.current) {
@@ -2649,7 +2657,7 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
       syncTimerRef.current = null;
     }
 
-    const shouldRunMaster = isMasterEnabled && accessToken && isReady;
+    const shouldRunMaster = isMasterEnabled && accessToken && isReady && !isSubscriberProfile;
     const shouldRunSubscriber = subscriptionUrl && isAutoSyncEnabled && isReady;
     const hasAutoSubs = subscriptions.some((s) => s.autoSyncEnabled) && isReady;
 
@@ -2740,7 +2748,7 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
         syncTimerRef.current = null;
       }
     };
-  }, [isMasterEnabled, accessToken, isReady, masterInterval, lastMasterPublish, subscriptionUrl, isAutoSyncEnabled, syncInterval, lastSyncCheck, publishBackup, checkForUpdates, subscriptions, syncFromPublicFolder, restoreToProfileDb, activeProfileId, refreshAllProviders]);
+  }, [isMasterEnabled, accessToken, isReady, masterInterval, lastMasterPublish, subscriptionUrl, isAutoSyncEnabled, syncInterval, lastSyncCheck, publishBackup, checkForUpdates, subscriptions, syncFromPublicFolder, restoreToProfileDb, activeProfileId, refreshAllProviders, isSubscriberProfile]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextState) => {
