@@ -188,6 +188,25 @@ export async function setupTables(database: SQLite.SQLiteDatabase): Promise<void
   `);
 
   await database.execAsync(`
+    CREATE TABLE IF NOT EXISTS inventory_movements (
+      id TEXT PRIMARY KEY,
+      type TEXT NOT NULL,
+      item_id TEXT,
+      item_name TEXT NOT NULL,
+      quantity INTEGER NOT NULL,
+      unit TEXT NOT NULL,
+      object_id TEXT,
+      object_name TEXT,
+      comment TEXT,
+      created_at INTEGER NOT NULL
+    );
+  `);
+
+  await database.execAsync(`
+    CREATE INDEX IF NOT EXISTS idx_inventory_movements_created ON inventory_movements(created_at);
+  `);
+
+  await database.execAsync(`
     CREATE TABLE IF NOT EXISTS app_settings (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL

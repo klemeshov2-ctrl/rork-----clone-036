@@ -1490,6 +1490,185 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
     }
   }, [ensureSyncFolderStructure, saveLocalManifest]);
 
+  const mergeRemoteIntoLocalDb = useCallback(async (token: string): Promise<void> => {
+    if (!db) return;
+    try {
+      const remoteManifest = await getRemoteManifest(token);
+      if (!remoteManifest || !remoteManifest.files) {
+        console.log('[Backup] mergeRemote: no remote manifest, skip merge');
+        return;
+      }
+      const filePaths = Object.keys(remoteManifest.files);
+      console.log('[Backup] mergeRemote: pulling', filePaths.length, 'remote files for merge');
+
+      const remoteFiles: Record<string, string> = {};
+      for (const path of filePaths) {
+        try {
+          const content = await downloadTextFileYandex(token, SYNC_FOLDER + '/' + path);
+          remoteFiles[path] = content;
+        } catch (e: any) {
+          console.log('[Backup] mergeRemote: failed to download', path, e?.message);
+        }
+      }
+
+      const safeParse = <T,>(s?: string): T | null => { if (!s) return null; try { return JSON.parse(s) as T; } catch { return null; } };
+
+      // Object groups (no updated_at) - INSERT OR IGNORE
+      const remoteGroups = safeParse<any[]>(remoteFiles['groups.json']) || [];
+      for (const g of remoteGroups) {
+        try {
+          await db.runAsync(
+            'INSERT OR IGNORE INTO object_groups (id, name, created_at) VALUES (?, ?, ?)',
+            [g.id, g.name, g.created_at || Date.now()]
+          );
+        } catch {}
+      }
+
+      // Inventory categories
+      const remoteCats = safeParse<any[]>(remoteFiles['categories.json']) || [];
+      for (const c of remoteCats) {
+        try {
+          await db.runAsync(
+            'INSERT OR IGNORE INTO inventory_categories (id, name) VALUES (?, ?)',
+            [c.id, c.name]
+          );
+        } catch {}
+      }
+
+      // Objects + contacts + documents (compare updated_at for object)
+      for (const [path, content] of Object.entries(remoteFiles)) {
+        if (!path.startsWith('objects/')) continue;
+        const data: any = safeParse(content);
+        if (!data || !data.object) continue;
+        const obj = data.object;
+        try {
+          const localObj = await db.getFirstAsync<{ updated_at: number }>(
+            'SELECT updated_at FROM objects WHERE id = ?', [obj.id]
+          );
+          const remoteUpd = obj.updated_at || obj.created_at || 0;
+          const localUpd = localObj?.updated_at || 0;
+          if (!localObj || remoteUpd > localUpd) {
+            await db.runAsync(
+              'INSERT OR REPLACE INTO objects (id, name, address, group_id, systems, created_at, updated_at, sync_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+              [obj.id, obj.name, obj.address, obj.group_id || null, obj.systems || '[]', obj.created_at, obj.updated_at, 'synced']
+            );
+          }
+          for (const ct of (data.contacts || [])) {
+            await db.runAsync(
+              'INSERT OR IGNORE INTO contacts (id, object_id, full_name, position, phone, email, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+              [ct.id, ct.object_id, ct.full_name, ct.position, ct.phone, ct.email || null, ct.created_at]
+            );
+          }
+          for (const dc of (data.documents || [])) {
+            await db.runAsync(
+              'INSERT OR IGNORE INTO object_documents (id, object_id, name, file_path, file_url, file_size, uploaded_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+              [dc.id, dc.object_id, dc.name, dc.file_path, dc.file_url || null, dc.file_size, dc.uploaded_at]
+            );
+          }
+        } catch (e: any) {
+          console.log('[Backup] mergeRemote object error:', e?.message);
+        }
+      }
+
+      // Work entries - INSERT OR IGNORE (preserve local edits, never lose remote)
+      for (const [path, content] of Object.entries(remoteFiles)) {
+        if (!path.startsWith('entries/')) continue;
+        const w: any = safeParse(content);
+        if (!w || !w.id) continue;
+        try {
+          await db.runAsync(
+            'INSERT OR IGNORE INTO work_entries (id, object_id, description, photos, attached_pdf_id, used_materials, system_name, latitude, longitude, created_at, sync_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [w.id, w.object_id, w.description, w.photos, w.attached_pdf_id || null, w.used_materials || null, w.system_name || null, w.latitude || null, w.longitude || null, w.created_at, 'synced']
+          );
+        } catch (e: any) {
+          console.log('[Backup] mergeRemote entry error:', e?.message);
+        }
+      }
+
+      // Inventory items - compare updated_at
+      const remoteInv = safeParse<any[]>(remoteFiles['inventory.json']) || [];
+      for (const i of remoteInv) {
+        try {
+          const local = await db.getFirstAsync<{ updated_at: number }>('SELECT updated_at FROM inventory WHERE id = ?', [i.id]);
+          const minQ = (i.min_quantity === undefined || i.min_quantity === null || isNaN(Number(i.min_quantity))) ? 2 : Number(i.min_quantity);
+          if (!local || (i.updated_at || 0) > (local.updated_at || 0)) {
+            await db.runAsync(
+              'INSERT OR REPLACE INTO inventory (id, name, quantity, unit, min_quantity, category_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+              [i.id, i.name, i.quantity, i.unit, minQ, i.category_id || null, i.created_at, i.updated_at]
+            );
+          }
+        } catch {}
+      }
+
+      // Checklists - INSERT OR IGNORE
+      const cl: any = safeParse(remoteFiles['checklists.json']);
+      if (cl) {
+        for (const t of (cl.templates || [])) {
+          try {
+            await db.runAsync(
+              'INSERT OR IGNORE INTO checklist_templates (id, name, items, is_default, created_at) VALUES (?, ?, ?, ?, ?)',
+              [t.id, t.name, t.items, t.is_default || 0, t.created_at]
+            );
+          } catch {}
+        }
+        for (const r of (cl.results || [])) {
+          try {
+            await db.runAsync(
+              'INSERT OR IGNORE INTO checklist_results (id, template_id, object_id, items, completed_at, pdf_instruction_id, sync_status) VALUES (?, ?, ?, ?, ?, ?, ?)',
+              [r.id, r.template_id, r.object_id || null, r.items, r.completed_at, r.pdf_instruction_id || null, 'synced']
+            );
+          } catch {}
+        }
+      }
+
+      // Knowledge items - INSERT OR IGNORE
+      const remoteKnow = safeParse<any[]>(remoteFiles['knowledge.json']) || [];
+      for (const k of remoteKnow) {
+        try {
+          await db.runAsync(
+            'INSERT OR IGNORE INTO knowledge_items (id, type, title, category, category_id, content, file_path, file_url, file_size, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [k.id, k.type, k.title, k.category, k.category_id || null, k.content || null, k.file_path || null, k.file_url || null, k.file_size || null, k.created_at]
+          );
+        } catch {}
+      }
+
+      // Tasks / reminders - INSERT OR IGNORE
+      const remoteTasks = safeParse<any[]>(remoteFiles['tasks.json']) || [];
+      for (const t of remoteTasks) {
+        try {
+          await db.runAsync(
+            'INSERT OR IGNORE INTO tasks (id, type, object_id, title, description, due_date, due_time, is_completed, completed_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [t.id, t.type || 'reminder', t.object_id || null, t.title, t.description || null, t.due_date, t.due_time || null, t.is_completed || 0, t.completed_at || null, t.created_at]
+          );
+        } catch {}
+      }
+      const remoteRem = safeParse<any[]>(remoteFiles['reminders.json']) || [];
+      for (const r of remoteRem) {
+        try {
+          await db.runAsync(
+            'INSERT OR IGNORE INTO reminders (id, object_id, title, description, due_date, is_completed, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            [r.id, r.object_id || null, r.title, r.description || null, r.due_date, r.is_completed || 0, r.created_at]
+          );
+        } catch {}
+      }
+
+      // Inventory movements - INSERT OR IGNORE (append-only log)
+      const remoteMoves = safeParse<any[]>(remoteFiles['inventory_movements.json']) || [];
+      for (const m of remoteMoves) {
+        try {
+          await db.runAsync(
+            'INSERT OR IGNORE INTO inventory_movements (id, type, item_id, item_name, quantity, unit, object_id, object_name, comment, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [m.id, m.type, m.item_id || null, m.item_name, m.quantity, m.unit, m.object_id || null, m.object_name || null, m.comment || null, m.created_at]
+          );
+        } catch {}
+      }
+
+      console.log('[Backup] mergeRemote: merge complete');
+    } catch (e: any) {
+      console.log('[Backup] mergeRemote failed (non-critical):', e?.message);
+    }
+  }, [db, getRemoteManifest]);
+
   const publishBackup = useCallback(async (): Promise<string> => {
     if (!accessToken) throw new Error('Not authenticated');
     if (!db) throw new Error('Database not ready');
@@ -1502,6 +1681,12 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
       await migrateFromZipIfNeeded(accessToken);
 
       setSyncProgress({ phase: 'preparing', current: 0, total: 0, currentFile: 'Подготовка данных...' });
+
+      // Multi-device merge: pull remote and merge into local before publishing
+      // so that data added on another device is preserved.
+      setSyncProgress({ phase: 'preparing', current: 0, total: 0, currentFile: 'Слияние данных с другими устройствами...' });
+      await mergeRemoteIntoLocalDb(accessToken);
+      try { await refreshAllProviders(); } catch {}
 
       let fileUploadResult: { uploaded: number; failed: number; skipped: number; details: { docs: number; photos: number; knowledge: number }; failedFiles: string[] } | null = null;
       if (Platform.OS !== 'web') {
@@ -1554,15 +1739,11 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
           console.log('[Backup] Some files failed to upload:', failedUploads.join(', '), '- continuing with partial sync');
         }
 
-        for (const path of diff.toDelete) {
-          currentOp++;
-          setSyncProgress({
-            phase: 'uploading',
-            current: currentOp,
-            total: totalOps,
-            currentFile: `Удаление: ${path.split('/').pop() || path}`,
-          });
-          await deleteResourceYandex(accessToken, SYNC_FOLDER + '/' + path);
+        // NOTE: Skipping remote deletions to avoid data loss when multiple
+        // master devices publish concurrently. A file missing locally may simply
+        // be data created on another device that we have not pulled yet.
+        if (diff.toDelete.length > 0) {
+          console.log('[Backup] Skipping remote deletion of', diff.toDelete.length, 'files (multi-device safety)');
         }
 
         if (Platform.OS !== 'web') {
@@ -1703,7 +1884,7 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
     } finally {
       setIsPublishing(false);
     }
-  }, [accessToken, db, masterPublicUrl, ensureSyncFolderStructure, getRemoteManifest, saveLocalManifest, migrateFromZipIfNeeded, uploadFilesToDiskAndUpdateDb, collectBackupData, masterId, yandexUserId, userEmail, isSubscriberProfile]);
+  }, [accessToken, db, masterPublicUrl, ensureSyncFolderStructure, getRemoteManifest, saveLocalManifest, migrateFromZipIfNeeded, uploadFilesToDiskAndUpdateDb, collectBackupData, masterId, yandexUserId, userEmail, isSubscriberProfile, mergeRemoteIntoLocalDb, refreshAllProviders]);
 
   const syncFromPublicFolder = useCallback(async (publicUrl: string, targetDb?: SQLite.SQLiteDatabase) => {
     const database = targetDb || db;

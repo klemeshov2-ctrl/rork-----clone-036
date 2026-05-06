@@ -163,18 +163,20 @@ export default function NewEntryScreen() {
         .filter(m => m.quantity > 0)
         .map(m => ({ itemId: m.itemId, name: m.name, quantity: m.quantity, unit: m.unit }));
 
+      const objectName = currentObject?.name;
+      const ctxComment = description.trim().slice(0, 80);
       if (isEditing && existingEntry) {
         if (existingEntry.usedMaterials) {
           for (const oldMat of existingEntry.usedMaterials) {
             const inv = getInventoryItem(oldMat.itemId);
-            if (inv) { await updateItem(inv.id, { quantity: inv.quantity + oldMat.quantity }); }
+            if (inv) { await updateItem(inv.id, { quantity: inv.quantity + oldMat.quantity }, { objectId: objectId as string, objectName, comment: 'Возврат при редактировании' }); }
           }
         }
-        for (const mat of usedMaterials) { await consumeItem(mat.itemId, mat.quantity); }
+        for (const mat of usedMaterials) { await consumeItem(mat.itemId, mat.quantity, { objectId: objectId as string, objectName, comment: ctxComment }); }
         await updateWorkEntry(editEntryId as string, { description: description.trim(), photos, usedMaterials, systemName: selectedSystem || undefined });
       } else {
         for (const mat of usedMaterials) {
-          const success = await consumeItem(mat.itemId, mat.quantity);
+          const success = await consumeItem(mat.itemId, mat.quantity, { objectId: objectId as string, objectName, comment: ctxComment });
           if (!success) { Alert.alert('Ошибка', `Недостаточно "${mat.name}" на складе`); setIsLoading(false); return; }
         }
         console.log('[NewEntry] Saving entry for object:', objectId);

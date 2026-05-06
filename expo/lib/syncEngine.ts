@@ -87,6 +87,13 @@ export async function buildSyncFiles(db: SQLite.SQLiteDatabase): Promise<Record<
   const reminders = await db.getAllAsync('SELECT * FROM reminders');
   files['reminders.json'] = JSON.stringify(reminders);
 
+  try {
+    const movements = await db.getAllAsync('SELECT * FROM inventory_movements');
+    files['inventory_movements.json'] = JSON.stringify(movements);
+  } catch {
+    files['inventory_movements.json'] = '[]';
+  }
+
   console.log('[SyncEngine] Built', Object.keys(files).length, 'sync files');
   return files;
 }
@@ -164,6 +171,7 @@ export async function restoreFromSyncFiles(
 ): Promise<void> {
   console.log('[SyncEngine] Restoring DB from', Object.keys(files).length, 'sync files...');
 
+  try { await db.execAsync('DELETE FROM inventory_movements'); } catch {}
   await db.execAsync('DELETE FROM knowledge_items');
   await db.execAsync('DELETE FROM reminders');
   await db.execAsync('DELETE FROM tasks');
@@ -304,6 +312,20 @@ export async function restoreFromSyncFiles(
       }
     } catch (e) {
       console.log('[SyncEngine] Error restoring tasks:', e);
+    }
+  }
+
+  if (files['inventory_movements.json']) {
+    try {
+      const moves = JSON.parse(files['inventory_movements.json']);
+      for (const m of moves) {
+        await db.runAsync(
+          'INSERT OR REPLACE INTO inventory_movements (id, type, item_id, item_name, quantity, unit, object_id, object_name, comment, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          [m.id, m.type, m.item_id || null, m.item_name, m.quantity, m.unit, m.object_id || null, m.object_name || null, m.comment || null, m.created_at]
+        );
+      }
+    } catch (e) {
+      console.log('[SyncEngine] Error restoring inventory_movements:', e);
     }
   }
 

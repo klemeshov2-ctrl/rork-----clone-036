@@ -102,6 +102,21 @@ export interface InventoryItem {
   updatedAt: number;
 }
 
+export type InventoryMovementType = 'in' | 'out';
+
+export interface InventoryMovement {
+  id: string;
+  type: InventoryMovementType;
+  itemId?: string;
+  itemName: string;
+  quantity: number;
+  unit: string;
+  objectId?: string;
+  objectName?: string;
+  comment?: string;
+  createdAt: number;
+}
+
 export interface Reminder {
   id: string;
   objectId?: string;

@@ -136,6 +136,12 @@ function WorkEntryCard({ entry, onEdit, onDelete, onEditDate, onPhotoPress, onCo
           </TouchableOpacity>
         </View>
       </View>
+      {entry.systemName ? (
+        <View style={{ flexDirection: 'row' as const, alignItems: 'center' as const, gap: 6, marginBottom: 8, alignSelf: 'flex-start' as const, backgroundColor: colors.primary + '15', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}>
+          <Cpu size={12} color={colors.primary} />
+          <Text style={{ fontSize: 12, fontWeight: '600' as const, color: colors.primary }}>{entry.systemName}</Text>
+        </View>
+      ) : null}
       <Text style={{ fontSize: 15, color: colors.text, lineHeight: 22 }}>{entry.description}</Text>
       {usedMaterials.length > 0 && (
         <View style={{ marginTop: 10, backgroundColor: colors.surface, borderRadius: 8, padding: 10 }}>
@@ -373,7 +379,7 @@ export default function ObjectDetailScreen() {
               for (const mat of entry.usedMaterials) {
                 const invItem = getInventoryItem(mat.itemId);
                 if (invItem) {
-                  await updateItem(invItem.id, { quantity: invItem.quantity + mat.quantity });
+                  await updateItem(invItem.id, { quantity: invItem.quantity + mat.quantity }, { objectId: object.id, objectName: object.name, comment: 'Возврат при удалении записи' });
                 }
               }
             }

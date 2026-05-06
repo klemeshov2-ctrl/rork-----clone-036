@@ -1,11 +1,12 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, Modal, TextInput, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Plus, Package, AlertTriangle, Trash2, Minus, Plus as PlusIcon, ChevronDown, ChevronRight, FolderPlus, Pencil, Tag, Search, ChevronsUpDown } from 'lucide-react-native';
+import { Plus, Package, AlertTriangle, Trash2, Minus, Plus as PlusIcon, ChevronDown, ChevronRight, FolderPlus, Pencil, Tag, Search, ChevronsUpDown, PackagePlus, History, ArrowDownToLine, ArrowUpFromLine } from 'lucide-react-native';
 import { useThemeColors } from '@/providers/ThemeProvider';
 import { ThemeColors } from '@/constants/colors';
-import { useInventory } from '@/providers/InventoryProvider';
-import { InventoryItem, InventoryCategory } from '@/types';
+import { useInventory, BulkReceiptItem } from '@/providers/InventoryProvider';
+import { InventoryItem, InventoryCategory, InventoryMovement } from '@/types';
+import { formatDateTime } from '@/lib/utils';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -139,7 +140,13 @@ function CategorySection({ category, items, colors, isExpanded, onToggle, onEdit
 
 export default function InventoryScreen() {
   const colors = useThemeColors();
-  const { items, categories, isLoading, addItem, updateItem, deleteItem, addCategory, updateCategory, deleteCategory } = useInventory();
+  const { items, categories, movements, isLoading, addItem, updateItem, deleteItem, bulkReceipt, deleteMovement, addCategory, updateCategory, deleteCategory } = useInventory();
+  const [activeTab, setActiveTab] = useState<'stock' | 'history'>('stock');
+  const [showBulkModal, setShowBulkModal] = useState(false);
+  const [bulkRows, setBulkRows] = useState<{ itemId: string; itemName: string; unit: string; quantity: string }[]>([]);
+  const [bulkComment, setBulkComment] = useState('');
+  const [bulkPickerVisible, setBulkPickerVisible] = useState(false);
+  const [bulkPickerSearch, setBulkPickerSearch] = useState('');
   const [isAdding, setIsAdding] = useState(false);
   const [name, setName] = useState('');
   const [quantity, setQuantity] = useState('');
@@ -321,14 +328,33 @@ export default function InventoryScreen() {
         <NotificationBell />
       </View>
 
-      <View style={styles.actionRow}>
-        <TouchableOpacity style={styles.smallButton} onPress={() => { setEditingCategoryId(null); setCategoryNameInput(''); setShowCategoryModal(true); }}>
-          <FolderPlus size={20} color={colors.text} />
+      <View style={styles.tabsRow}>
+        <TouchableOpacity style={[styles.tabBtn, activeTab === 'stock' && styles.tabBtnActive]} onPress={() => setActiveTab('stock')}>
+          <Package size={16} color={activeTab === 'stock' ? colors.text : colors.textSecondary} />
+          <Text style={[styles.tabBtnText, activeTab === 'stock' && { color: colors.text }]}>Склад</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.addButton} onPress={() => setIsAdding(true)}>
-          <Plus size={24} color={colors.text} />
+        <TouchableOpacity style={[styles.tabBtn, activeTab === 'history' && styles.tabBtnActive]} onPress={() => setActiveTab('history')}>
+          <History size={16} color={activeTab === 'history' ? colors.text : colors.textSecondary} />
+          <Text style={[styles.tabBtnText, activeTab === 'history' && { color: colors.text }]}>История</Text>
+          {movements.length > 0 && (
+            <Text style={{ color: colors.textMuted, fontSize: 11 }}>{movements.length}</Text>
+          )}
         </TouchableOpacity>
       </View>
+
+      {activeTab === 'stock' && (
+        <View style={styles.actionRow}>
+          <TouchableOpacity style={styles.smallButton} onPress={() => { setEditingCategoryId(null); setCategoryNameInput(''); setShowCategoryModal(true); }}>
+            <FolderPlus size={20} color={colors.text} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.smallButton} onPress={() => { setBulkRows([]); setBulkComment(''); setShowBulkModal(true); }}>
+            <PackagePlus size={20} color={colors.text} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.addButton} onPress={() => setIsAdding(true)}>
+            <Plus size={24} color={colors.text} />
+          </TouchableOpacity>
+        </View>
+      )}
 
       <View style={styles.searchRow}>
         <View style={styles.searchInputWrapper}>
@@ -354,14 +380,57 @@ export default function InventoryScreen() {
         </TouchableOpacity>
       </View>
 
-      {lowStockItems.length > 0 && (
+      {activeTab === 'stock' && lowStockItems.length > 0 && (
         <View style={styles.warningBanner}>
           <AlertTriangle size={20} color={colors.error} />
           <Text style={{ color: colors.error, fontSize: 14, fontWeight: '500' as const }}>Заканчивается: {lowStockItems.length} позиций</Text>
         </View>
       )}
 
-      {isLoading ? (
+      {activeTab === 'history' ? (
+        <FlatList
+          data={movements}
+          keyExtractor={(m) => m.id}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 200, paddingTop: 8 }}
+          renderItem={({ item }) => (
+            <Card style={{ marginBottom: 10, borderLeftWidth: 4, borderLeftColor: item.type === 'in' ? colors.success : colors.warning }}>
+              <View style={{ flexDirection: 'row' as const, alignItems: 'center' as const, gap: 10 }}>
+                <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: (item.type === 'in' ? colors.success : colors.warning) + '20', alignItems: 'center' as const, justifyContent: 'center' as const }}>
+                  {item.type === 'in' ? <ArrowDownToLine size={18} color={colors.success} /> : <ArrowUpFromLine size={18} color={colors.warning} />}
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 14, fontWeight: '600' as const, color: colors.text }} numberOfLines={1}>{item.itemName}</Text>
+                  <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 2 }}>{formatDateTime(item.createdAt)}</Text>
+                </View>
+                <Text style={{ fontSize: 16, fontWeight: '700' as const, color: item.type === 'in' ? colors.success : colors.warning }}>
+                  {item.type === 'in' ? '+' : '-'}{item.quantity} {item.unit}
+                </Text>
+                <TouchableOpacity onPress={() => Alert.alert('Удалить запись?', '', [{ text: 'Отмена', style: 'cancel' }, { text: 'Удалить', style: 'destructive', onPress: () => deleteMovement(item.id) }])} style={{ padding: 6 }}>
+                  <Trash2 size={14} color={colors.error} />
+                </TouchableOpacity>
+              </View>
+              {(item.objectName || item.comment) && (
+                <View style={{ marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.border }}>
+                  {item.objectName && (
+                    <Text style={{ fontSize: 12, color: colors.textSecondary }}>Объект: {item.objectName}</Text>
+                  )}
+                  {item.comment && (
+                    <Text style={{ fontSize: 12, color: colors.textMuted, marginTop: 2 }}>{item.comment}</Text>
+                  )}
+                </View>
+              )}
+            </Card>
+          )}
+          ListEmptyComponent={
+            <View style={{ alignItems: 'center' as const, justifyContent: 'center' as const, paddingVertical: 60, gap: 16 }}>
+              <History size={48} color={colors.textMuted} />
+              <Text style={{ fontSize: 16, color: colors.textSecondary }}>Нет операций</Text>
+              <Text style={{ fontSize: 13, color: colors.textMuted, textAlign: 'center' as const, paddingHorizontal: 32 }}>Здесь будут отображаться все приходы и списания материалов по объектам</Text>
+            </View>
+          }
+          showsVerticalScrollIndicator={false}
+        />
+      ) : isLoading ? (
         <View style={styles.loadingContainer}><Text style={{ color: colors.textSecondary, fontSize: 16 }}>Загрузка...</Text></View>
       ) : (
         <KeyboardAvoidingView
@@ -533,6 +602,115 @@ export default function InventoryScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+      <Modal visible={showBulkModal} animationType="slide" transparent onRequestClose={() => setShowBulkModal(false)}>
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <View style={[styles.modalContent, { maxHeight: '88%' }]}>
+            <View style={{ flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const, marginBottom: 12 }}>
+              <Text style={[styles.modalTitle, { marginBottom: 0 }]}>Массовый приход</Text>
+              <Text style={{ fontSize: 12, color: colors.textMuted }}>{bulkRows.length} позиций</Text>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" style={{ maxHeight: 360 }}>
+              {bulkRows.length === 0 && (
+                <Text style={{ fontSize: 13, color: colors.textMuted, textAlign: 'center' as const, paddingVertical: 18 }}>Добавьте материалы для прихода</Text>
+              )}
+              {bulkRows.map((row, idx) => (
+                <View key={`${row.itemId}-${idx}`} style={{ flexDirection: 'row' as const, alignItems: 'center' as const, gap: 8, marginBottom: 8, backgroundColor: colors.surface, borderRadius: 10, padding: 10, borderWidth: 1, borderColor: colors.border }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 13, color: colors.text, fontWeight: '600' as const }} numberOfLines={1}>{row.itemName}</Text>
+                    <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 2 }}>{row.unit}</Text>
+                  </View>
+                  <TextInput
+                    style={{ width: 80, backgroundColor: colors.surfaceElevated, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, color: colors.text, fontSize: 14, borderWidth: 1, borderColor: colors.border, textAlign: 'center' as const }}
+                    keyboardType="numeric"
+                    value={row.quantity}
+                    onChangeText={(v) => setBulkRows(prev => prev.map((r, i) => i === idx ? { ...r, quantity: v } : r))}
+                    placeholder="0"
+                    placeholderTextColor={colors.textMuted}
+                  />
+                  <TouchableOpacity onPress={() => setBulkRows(prev => prev.filter((_, i) => i !== idx))} style={{ padding: 4 }}>
+                    <Trash2 size={16} color={colors.error} />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </ScrollView>
+            <TouchableOpacity
+              style={{ flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'center' as const, gap: 6, paddingVertical: 12, borderRadius: 10, borderWidth: 1, borderStyle: 'dashed' as const, borderColor: colors.primary, marginBottom: 10, marginTop: 4 }}
+              onPress={() => { setBulkPickerSearch(''); setBulkPickerVisible(true); }}
+            >
+              <Plus size={16} color={colors.primary} />
+              <Text style={{ color: colors.primary, fontSize: 14, fontWeight: '600' as const }}>Добавить материал</Text>
+            </TouchableOpacity>
+            <TextInput
+              style={styles.modalInput}
+              value={bulkComment}
+              onChangeText={setBulkComment}
+              placeholder="Комментарий к приходу (необязательно)"
+              placeholderTextColor={colors.textMuted}
+            />
+            <View style={{ flexDirection: 'row' as const, gap: 12 }}>
+              <Button title="Отмена" variant="ghost" onPress={() => setShowBulkModal(false)} style={{ flex: 1 }} />
+              <Button
+                title="Оприходовать"
+                onPress={async () => {
+                  const entries: BulkReceiptItem[] = bulkRows
+                    .map(r => ({ itemId: r.itemId, itemName: r.itemName, unit: r.unit, quantity: parseInt(r.quantity, 10) || 0 }))
+                    .filter(e => e.quantity > 0);
+                  if (entries.length === 0) { Alert.alert('Ошибка', 'Добавьте хотя бы одну позицию с количеством'); return; }
+                  const ok = await guardEdit();
+                  if (!ok) return;
+                  await bulkReceipt(entries, bulkComment.trim() || undefined);
+                  setShowBulkModal(false);
+                  setBulkRows([]);
+                  setBulkComment('');
+                }}
+                disabled={bulkRows.length === 0}
+                style={{ flex: 1 }}
+              />
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      <Modal visible={bulkPickerVisible} animationType="slide" transparent onRequestClose={() => setBulkPickerVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxHeight: '80%' }]}>
+            <View style={{ flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const, marginBottom: 12 }}>
+              <Text style={[styles.modalTitle, { marginBottom: 0 }]}>Выберите материал</Text>
+              <TouchableOpacity onPress={() => setBulkPickerVisible(false)}><Text style={{ color: colors.primary, fontSize: 14 }}>Готово</Text></TouchableOpacity>
+            </View>
+            <TextInput
+              style={styles.modalInput}
+              value={bulkPickerSearch}
+              onChangeText={setBulkPickerSearch}
+              placeholder="Поиск..."
+              placeholderTextColor={colors.textMuted}
+            />
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              {items
+                .filter(i => !bulkPickerSearch.trim() || i.name.toLowerCase().includes(bulkPickerSearch.toLowerCase()))
+                .map(i => {
+                  const already = bulkRows.find(r => r.itemId === i.id);
+                  return (
+                    <TouchableOpacity
+                      key={i.id}
+                      onPress={() => {
+                        if (already) return;
+                        setBulkRows(prev => [...prev, { itemId: i.id, itemName: i.name, unit: i.unit, quantity: '1' }]);
+                      }}
+                      style={{ flexDirection: 'row' as const, alignItems: 'center' as const, gap: 10, paddingVertical: 12, paddingHorizontal: 8, borderRadius: 8, marginBottom: 4, backgroundColor: already ? colors.primary + '15' : 'transparent' }}
+                    >
+                      <Package size={16} color={already ? colors.primary : colors.secondary} />
+                      <Text style={{ flex: 1, color: colors.text, fontSize: 14 }}>{i.name}</Text>
+                      <Text style={{ color: colors.textMuted, fontSize: 12 }}>{i.quantity} {i.unit}</Text>
+                      {already && <Text style={{ color: colors.primary, fontSize: 11, fontWeight: '700' as const }}>✓</Text>}
+                    </TouchableOpacity>
+                  );
+                })}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
       <CommentsBottomSheet
         visible={commentsModalVisible}
         onClose={() => setCommentsModalVisible(false)}
@@ -548,6 +726,10 @@ function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
     header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12 },
+    tabsRow: { flexDirection: 'row', paddingHorizontal: 16, gap: 8, marginBottom: 8 },
+    tabBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 12, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+    tabBtnActive: { backgroundColor: colors.surfaceElevated, borderColor: colors.primary },
+    tabBtnText: { fontSize: 13, fontWeight: '600' as const, color: colors.textSecondary },
     actionRow: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', paddingHorizontal: 16, marginBottom: 8, gap: 8 },
     title: { fontSize: 28, fontWeight: 'bold', color: colors.text },
     smallButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.surfaceElevated, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border },
