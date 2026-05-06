@@ -54,7 +54,7 @@ export default function ExcelScreen() {
     addContact,
     refreshData: refreshObjects,
   } = useObjects();
-  const { items: inventoryItems, addItem: addInventoryItem, refreshData: refreshInventory } = useInventory();
+  const { items: inventoryItems, movements: inventoryMovements, addItem: addInventoryItem, refreshData: refreshInventory } = useInventory();
   const { templates, results, refreshData: refreshChecklists } = useChecklists();
   const { reminders, addReminder, refreshData: refreshReminders } = useReminders();
   const { tasks, addTask, refreshData: refreshTasks } = useTasks();
@@ -72,6 +72,7 @@ export default function ExcelScreen() {
     { icon: <Users size={16} color={colors.info} />, label: 'Контакты', count: allContacts.length, color: 'rgba(33, 150, 243, 0.12)' },
     { icon: <Wrench size={16} color={colors.secondary} />, label: 'Записи работ', count: allWorkEntries.length, color: 'rgba(78, 205, 196, 0.12)' },
     { icon: <Package size={16} color={colors.warning} />, label: 'Склад', count: inventoryItems.length, color: 'rgba(255, 193, 7, 0.12)' },
+    { icon: <Package size={16} color={colors.secondary} />, label: 'История склада', count: inventoryMovements.length, color: 'rgba(78, 205, 196, 0.12)' },
     { icon: <ClipboardList size={16} color="#AB47BC" />, label: 'Шаблоны чек-листов', count: templates.length, color: 'rgba(171, 71, 188, 0.12)' },
     { icon: <ClipboardList size={16} color="#7E57C2" />, label: 'Результаты чек-листов', count: results.length, color: 'rgba(126, 87, 194, 0.12)' },
     { icon: <Bell size={16} color={colors.error} />, label: 'Напоминания', count: reminders.length, color: 'rgba(255, 82, 82, 0.12)' },
@@ -95,6 +96,7 @@ export default function ExcelScreen() {
         contacts,
         workEntries,
         inventory: inventoryItems,
+        inventoryMovements,
         checklistTemplates: templates,
         checklistResults: results,
         reminders,

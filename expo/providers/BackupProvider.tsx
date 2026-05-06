@@ -2754,8 +2754,22 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
         console.log('[Backup] New master data available, syncing...');
         const isActiveProfile = activeProfileId === 'master';
         if (isActiveProfile) {
-          await syncFromPublicFolder(masterPublicUrl);
-          await refreshAllProviders();
+          // Multi-device safety: merge remote into local (no DB wipe),
+          // then re-publish so changes from this device are preserved on the cloud.
+          if (accessToken) {
+            console.log('[Backup] Master self-sync: merging remote -> local, then publishing combined data');
+            await mergeRemoteIntoLocalDb(accessToken);
+            await refreshAllProviders();
+            try {
+              await publishBackup();
+            } catch (pubErr: any) {
+              console.log('[Backup] Master self-sync: publish after merge failed (non-critical):', pubErr?.message);
+            }
+          } else {
+            // Fallback: no Yandex token available, do destructive restore
+            await syncFromPublicFolder(masterPublicUrl);
+            await refreshAllProviders();
+          }
         } else {
           const masterDb = await openProfileDatabase('master');
           try {
@@ -2781,7 +2795,7 @@ export const [BackupProvider, useBackup] = createContextHook<BackupContextType>(
     } finally {
       setIsMasterSyncing(false);
     }
-  }, [masterPublicUrl, lastMasterSync, activeProfileId, syncFromPublicFolder, refreshAllProviders]);
+  }, [masterPublicUrl, lastMasterSync, activeProfileId, syncFromPublicFolder, refreshAllProviders, accessToken, mergeRemoteIntoLocalDb, publishBackup]);
 
   const loadBackupsList = useCallback(async () => {
     if (!accessToken) return;

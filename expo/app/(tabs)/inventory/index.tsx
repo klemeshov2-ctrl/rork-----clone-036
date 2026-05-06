@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, Modal, TextInput, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Plus, Package, AlertTriangle, Trash2, Minus, Plus as PlusIcon, ChevronDown, ChevronRight, FolderPlus, Pencil, Tag, Search, ChevronsUpDown, PackagePlus, History, ArrowDownToLine, ArrowUpFromLine } from 'lucide-react-native';
+import { Plus, Package, AlertTriangle, Trash2, Minus, Plus as PlusIcon, ChevronDown, ChevronRight, FolderPlus, Pencil, Tag, Search, ChevronsUpDown, PackagePlus, History, ArrowDownToLine, ArrowUpFromLine, FileSpreadsheet } from 'lucide-react-native';
+import { exportInventoryHistory } from '@/lib/excel';
 import { useThemeColors } from '@/providers/ThemeProvider';
 import { ThemeColors } from '@/constants/colors';
 import { useInventory, BulkReceiptItem } from '@/providers/InventoryProvider';
@@ -384,6 +385,24 @@ export default function InventoryScreen() {
         <View style={styles.warningBanner}>
           <AlertTriangle size={20} color={colors.error} />
           <Text style={{ color: colors.error, fontSize: 14, fontWeight: '500' as const }}>Заканчивается: {lowStockItems.length} позиций</Text>
+        </View>
+      )}
+
+      {activeTab === 'history' && movements.length > 0 && (
+        <View style={{ paddingHorizontal: 16, marginBottom: 8 }}>
+          <TouchableOpacity
+            onPress={async () => {
+              try {
+                await exportInventoryHistory(movements);
+              } catch (e: any) {
+                Alert.alert('Ошибка', e?.message || 'Не удалось экспортировать');
+              }
+            }}
+            style={{ flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'center' as const, gap: 8, paddingVertical: 12, borderRadius: 12, backgroundColor: colors.success + '15', borderWidth: 1, borderColor: colors.success + '40' }}
+          >
+            <FileSpreadsheet size={18} color={colors.success} />
+            <Text style={{ color: colors.success, fontSize: 14, fontWeight: '600' as const }}>Экспорт истории в Excel</Text>
+          </TouchableOpacity>
         </View>
       )}
 

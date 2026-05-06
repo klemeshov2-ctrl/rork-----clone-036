@@ -8,6 +8,7 @@ import {
   ContactPerson,
   WorkEntry,
   InventoryItem,
+  InventoryMovement,
   ChecklistTemplate,
   ChecklistResult,
   Reminder,
@@ -20,6 +21,7 @@ interface ExportData {
   contacts: Record<string, ContactPerson[]>;
   workEntries: Record<string, WorkEntry[]>;
   inventory: InventoryItem[];
+  inventoryMovements?: InventoryMovement[];
   checklistTemplates: ChecklistTemplate[];
   checklistResults: ChecklistResult[];
   reminders: Reminder[];
@@ -93,6 +95,22 @@ export async function exportToExcel(data: ExportData): Promise<void> {
   const wsInventory = XLSX.utils.json_to_sheet(inventoryRows);
   wsInventory['!cols'] = [{ wch: 20 }, { wch: 30 }, { wch: 12 }, { wch: 10 }, { wch: 15 }, { wch: 20 }, { wch: 20 }];
   XLSX.utils.book_append_sheet(wb, wsInventory, 'Склад');
+
+  if (data.inventoryMovements && data.inventoryMovements.length > 0) {
+    const movRows = data.inventoryMovements.map(m => ({
+      'ID': m.id,
+      'Тип': m.type === 'in' ? 'Приход' : 'Списание',
+      'Материал': m.itemName,
+      'Количество': m.quantity,
+      'Единица': m.unit,
+      'Объект': m.objectName || '',
+      'Комментарий': m.comment || '',
+      'Дата': formatTs(m.createdAt),
+    }));
+    const wsMov = XLSX.utils.json_to_sheet(movRows);
+    wsMov['!cols'] = [{ wch: 20 }, { wch: 12 }, { wch: 30 }, { wch: 12 }, { wch: 10 }, { wch: 25 }, { wch: 35 }, { wch: 20 }];
+    XLSX.utils.book_append_sheet(wb, wsMov, 'История склада');
+  }
 
   const templatesRows = data.checklistTemplates.map(t => ({
     'ID': t.id,
@@ -234,6 +252,67 @@ function parseRuDate(dateStr: string): number {
   }
   const d = new Date(dateStr);
   return isNaN(d.getTime()) ? Date.now() : d.getTime();
+}
+
+export async function exportInventoryHistory(
+  movements: InventoryMovement[],
+  getObjectName?: (id: string) => string,
+): Promise<void> {
+  console.log('[Excel] Exporting inventory history:', movements.length, 'movements');
+  const wb = XLSX.utils.book_new();
+
+  const rows = movements.map(m => ({
+    'Дата': formatTs(m.createdAt),
+    'Тип': m.type === 'in' ? 'Приход' : 'Списание',
+    'Материал': m.itemName,
+    'Количество': m.quantity,
+    'Единица': m.unit,
+    'Объект': m.objectName || (m.objectId && getObjectName ? getObjectName(m.objectId) : ''),
+    'Комментарий': m.comment || '',
+    'ID': m.id,
+  }));
+  const ws = XLSX.utils.json_to_sheet(rows);
+  ws['!cols'] = [{ wch: 20 }, { wch: 12 }, { wch: 30 }, { wch: 12 }, { wch: 10 }, { wch: 25 }, { wch: 35 }, { wch: 20 }];
+  XLSX.utils.book_append_sheet(wb, ws, 'История склада');
+
+  const inCount = movements.filter(m => m.type === 'in').length;
+  const outCount = movements.length - inCount;
+  const summary = [
+    { 'Показатель': 'Всего операций', 'Значение': movements.length },
+    { 'Показатель': 'Приходов', 'Значение': inCount },
+    { 'Показатель': 'Списаний', 'Значение': outCount },
+    { 'Показатель': 'Сформировано', 'Значение': formatTs(Date.now()) },
+  ];
+  const wsSum = XLSX.utils.json_to_sheet(summary);
+  wsSum['!cols'] = [{ wch: 24 }, { wch: 26 }];
+  XLSX.utils.book_append_sheet(wb, wsSum, 'Сводка');
+
+  const wbout = XLSX.write(wb, { type: 'base64', bookType: 'xlsx' });
+  const now = new Date();
+  const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const fileName = `inventory_history_${dateStr}.xlsx`;
+
+  if (Platform.OS === 'web') {
+    const binaryStr = atob(wbout);
+    const bytes = new Uint8Array(binaryStr.length);
+    for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+    const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    a.click();
+    URL.revokeObjectURL(url);
+    return;
+  }
+
+  const filePath = `${FileSystem.cacheDirectory}${fileName}`;
+  await FileSystem.writeAsStringAsync(filePath, wbout, { encoding: FileSystem.EncodingType.Base64 });
+  await Sharing.shareAsync(filePath, {
+    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    dialogTitle: 'Экспорт истории склада',
+    UTI: 'org.openxmlformats.spreadsheetml.sheet',
+  });
 }
 
 export async function pickAndParseExcel(): Promise<ImportResult | null> {
